@@ -208,7 +208,7 @@ class OverlayPetService : Service() {
         webView.evaluateJavascript("window.__applySettings && window.__applySettings()", null)
     }
 
-    private fun savePosition() {
+    fun savePosition() {
         store.set(KEY_X, posX.toString())
         store.set(KEY_Y, posY.toString())
     }

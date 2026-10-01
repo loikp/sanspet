@@ -69,10 +69,6 @@ class PetBridge(
 
     // ---------- 悬浮窗 ----------
 
-    @JavascriptInterface
-    fun moveBy(dx: Double, dy: Double) {
-        main.post { overlay?.moveBy(dx, dy) }
-    }
 
     @JavascriptInterface
     fun savePetPosition() {
