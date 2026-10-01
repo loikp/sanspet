@@ -36,6 +36,9 @@
     clearMessages: () => localStorage.removeItem(K),
 
     setExpanded: () => {},
+    setCompactSize: () => {},
+    setExpandedSize: () => {},
+    refreshPet: () => {},
     moveBy: () => {},
     savePetPosition: () => {},
     closeOverlay: () => {},

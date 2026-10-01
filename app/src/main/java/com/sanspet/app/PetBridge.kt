@@ -80,6 +80,21 @@ class PetBridge(
     }
 
     @JavascriptInterface
+    fun setCompactSize(w: Double, h: Double) {
+        main.post { overlay?.setCompactSize(w, h) }
+    }
+
+    @JavascriptInterface
+    fun setExpandedSize(w: Double, h: Double) {
+        main.post { overlay?.setExpandedSize(w, h) }
+    }
+
+    @JavascriptInterface
+    fun refreshPet() {
+        main.post { overlay?.refresh() }
+    }
+
+    @JavascriptInterface
     fun setExpanded(expanded: Boolean) {
         main.post { overlay?.setExpanded(expanded) }
     }

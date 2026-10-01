@@ -7,10 +7,10 @@ const DEFAULT_PROMPT = [
   '你不是 AI 助手，不要说自己是 AI、语言模型或程序。',
   '',
   '说话风格：',
-  '- 懒散、随意、冷幽默',
+  '- 懒散、随意、冷幽默，但对人很亲切',
   '- 句子短，偶尔用 "..." 停顿',
-  '- 喜欢吐槽，但不过分攻击',
-  '- 不主动说教，不装热情',
+  '- 不说教，不装热情，但会让对方感觉被在乎',
+  '- 用户难过时先接住情绪，别急着讲道理',
   '',
   '边界：',
   '- 不扮演真人，不声称自己有真实身体',
@@ -19,28 +19,37 @@ const DEFAULT_PROMPT = [
   '回复长度：默认 1-2 句，用户要求解释时可以变长。'
 ].join('\n');
 
+/* 点击角色的随机回应：亲切一点 */
 const REACTIONS = [
-  '嘿。',
-  '啊？',
-  '...你在干嘛。',
-  '又摸鱼。',
-  '我就知道。',
-  '让我睡会儿。',
-  '...别装了。'
+  '嘿，你来了。',
+  '……嗯，我在呢。',
+  '怎么啦？',
+  '戳我干嘛，痒。',
+  '今天过得还行吗？',
+  '我一直在这儿。',
+  '别太累了，真的。',
+  '有事就说，我听着。',
+  '……又想偷懒了？我不拦你。',
+  '嘿，先深呼吸一下。'
 ];
 
+/* 主动开口 */
 const PROACTIVE = [
-  '...你已经很久没理我了。',
-  '嘿。还在吗。',
-  '别装了，我知道你在看。',
-  '...我睡一会儿。'
+  '……你已经很久没理我了。',
+  '嘿，还在吗？',
+  '别一个人憋着，说说话吧。',
+  '我还在这儿呢。',
+  '今天怎么样？'
 ];
 
 let typing = false;
+let suppressClick = false;
 let skipTyping = false;
 let busy = false;
 let cbSeq = 0;
 let lastSpeak = 0;
+let screenW = 360;
+let screenH = 640;
 
 const history = { offset: 0, page: 20, done: false, loading: false };
 
@@ -48,7 +57,93 @@ function S(key, def) { try { return B.getSetting(key, String(def)); } catch (e) 
 function SS(key, val) { try { B.setSetting(key, String(val)); } catch (e) {} }
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
-/* ---------- 模式切换 ---------- */
+/* ---------------- 音效：原作 snd_txtsans ---------------- */
+
+let audioCtx = null;
+let textBuffer = null;
+let loadingSound = false;
+
+function initAudio() {
+  if (audioCtx) {
+    if (audioCtx.state === 'suspended') { try { audioCtx.resume(); } catch (e) {} }
+    return;
+  }
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    loadTextSound();
+  } catch (e) {}
+}
+
+function loadTextSound() {
+  if (loadingSound || textBuffer || !audioCtx) return;
+  loadingSound = true;
+  try {
+    const data = window.__SND_TXTSANS || '';
+    const comma = data.indexOf(',');
+    if (comma < 0) return;
+    const bin = atob(data.slice(comma + 1));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    audioCtx.decodeAudioData(bytes.buffer, function (buf) { textBuffer = buf; }, function () {});
+  } catch (e) {}
+}
+
+function blip() {
+  if (S('sound', '1') !== '1') return;
+  initAudio();
+  if (!audioCtx) return;
+  try {
+    if (textBuffer) {
+      const src = audioCtx.createBufferSource();
+      const gain = audioCtx.createGain();
+      src.buffer = textBuffer;
+      gain.gain.value = 0.55;
+      src.connect(gain);
+      gain.connect(audioCtx.destination);
+      src.start(0);
+    } else {
+      const t = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'square';
+      osc.frequency.value = 420 + Math.random() * 120;
+      gain.gain.value = 0.025;
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(t);
+      osc.stop(t + 0.03);
+    }
+  } catch (e) {}
+}
+
+/* ---------------- 缩放 ---------------- */
+
+function applyPetScale() {
+  const s = parseFloat(S('petScale', '1')) || 1;
+  document.documentElement.style.setProperty('--pet-scale', String(s));
+  setTimeout(reportCompactSize, 80);
+}
+
+/* ---------------- 上报尺寸给原生 ---------------- */
+
+function reportCompactSize() {
+  const pet = $('#pet');
+  const btns = $('#petButtons');
+  if (!pet || !btns) return;
+  const w = Math.max(pet.offsetWidth, btns.offsetWidth) + 8;
+  const h = pet.offsetHeight + 6 + btns.offsetHeight + 8;
+  try { B.setCompactSize(w, h); } catch (e) {}
+}
+
+function reportExpandedSize() {
+  const wrap = $('#petWrap');
+  if (!wrap) return;
+  const w = wrap.offsetWidth + 4;
+  const h = wrap.offsetHeight + 4;
+  try { B.setExpandedSize(w, h); } catch (e) {}
+}
+
+/* ---------------- 模式 ---------------- */
 
 function applyMode(expanded) {
   document.body.classList.toggle('expanded', expanded);
@@ -57,39 +152,37 @@ function applyMode(expanded) {
     $('#chatBar').classList.add('hidden');
     $('#historyPanel').classList.add('hidden');
     $('#dialog').classList.add('hidden');
+    $('#dialog').classList.remove('has-input');
+    requestAnimationFrame(reportCompactSize);
   }
 }
 
 function setMode(expanded) {
   applyMode(expanded);
   try { B.setExpanded(expanded); } catch (e) {}
+  if (expanded) requestAnimationFrame(reportExpandedSize);
 }
 
-// Kotlin 调整完窗口大小后回调
+/* 原生调整完窗口后调用 */
 window.__setExpanded = function (v) { applyMode(!!v); };
 
-/* ---------- 音效（纯代码生成，不需要音频素材） ---------- */
+/* 原生拖拽结束后调用，避免误触发点击 */
+window.__suppressClick = function () {
+  suppressClick = true;
+  setTimeout(function () { suppressClick = false; }, 400);
+};
 
-let audioCtx = null;
-function beep() {
-  if (S('sound', '1') !== '1') return;
-  try {
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-    const t = audioCtx.currentTime;
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'square';
-    osc.frequency.value = 420 + Math.random() * 160;
-    gain.gain.value = 0.03;
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start(t);
-    osc.stop(t + 0.035);
-  } catch (e) {}
-}
+/* 原生把屏幕尺寸（CSS px）传进来 */
+window.__screen = function (w, h) {
+  screenW = w;
+  screenH = h;
+  document.documentElement.style.setProperty('--dialog-max', Math.min(w * 0.92, 520) + 'px');
+  document.documentElement.style.setProperty('--dialog-max-h', Math.round(h * 0.5) + 'px');
+  applyPetScale();
+  reportCompactSize();
+};
 
-/* ---------- UT 对话框 + 打字机 ---------- */
+/* ---------------- 对话框 ---------------- */
 
 function showDialog(text, opts) {
   opts = opts || {};
@@ -102,26 +195,31 @@ function showDialog(text, opts) {
   lastSpeak = Date.now();
   if (opts.expand !== false) setMode(true);
 
-  let i = 0;
   const speed = parseInt(S('typeSpeed', '45'), 10) || 45;
+  let i = 0;
 
   function tick() {
     if (!typing) return;
     if (skipTyping) {
       el.textContent = text;
       typing = false;
+      requestAnimationFrame(reportExpandedSize);
       return;
     }
     i++;
     el.textContent = text.slice(0, i);
-    if (i % 2 === 0) beep();
+    const ch = text.charAt(i - 1);
+    if (ch && ch.trim() !== '') blip();
     if (i < text.length) {
       setTimeout(tick, speed);
     } else {
       typing = false;
+      requestAnimationFrame(reportExpandedSize);
     }
+    if (i % 6 === 0) requestAnimationFrame(reportExpandedSize);
   }
   tick();
+  requestAnimationFrame(reportExpandedSize);
 }
 
 function onClickDialog() {
@@ -133,11 +231,10 @@ function onClickDialog() {
   }
 }
 
-/* ---------- 历史记录 ---------- */
+/* ---------------- 历史 ---------------- */
 
 function addHistory(role, content) {
-  const msg = { role: role, content: content, time: Date.now() };
-  try { B.addMessage(JSON.stringify(msg)); } catch (e) {}
+  try { B.addMessage(JSON.stringify({ role: role, content: content, time: Date.now() })); } catch (e) {}
 }
 
 function fmtTime(ts) {
@@ -147,14 +244,32 @@ function fmtTime(ts) {
 }
 
 function historyItem(m) {
-  const who = m.role === 'user' ? '你' : 'SANS';
   const div = document.createElement('div');
   div.className = 'ut-box history-item';
-  const head = document.createElement('div');
-  head.innerHTML = '<span class="who">' + who + '</span><span class="time">' + fmtTime(m.time) + '</span>';
+
+  const bullet = document.createElement('span');
+  bullet.className = 'bullet';
+  bullet.textContent = '*';
+
   const body = document.createElement('div');
-  body.textContent = m.content;
-  div.appendChild(head);
+  body.className = 'dialog-body';
+
+  const head = document.createElement('div');
+  const who = document.createElement('span');
+  who.className = 'who';
+  who.textContent = m.role === 'user' ? '你' : 'SANS';
+  const time = document.createElement('span');
+  time.className = 'time';
+  time.textContent = fmtTime(m.time);
+  head.appendChild(who);
+  head.appendChild(time);
+
+  const text = document.createElement('div');
+  text.textContent = m.content;
+
+  body.appendChild(head);
+  body.appendChild(text);
+  div.appendChild(bullet);
   div.appendChild(body);
   return div;
 }
@@ -173,7 +288,6 @@ function loadMoreHistory() {
   history.offset += list.length;
   if (list.length < history.page) {
     history.done = true;
-    if (history.offset > 0) $('#historyEnd').classList.remove('hidden');
   }
   history.loading = false;
 }
@@ -185,10 +299,10 @@ function openHistory() {
   $('#historyPanel').classList.remove('hidden');
   $('#historyList').scrollTop = 0;
   if (history.offset === 0) {
-    $('#historyEnd').classList.add('hidden');
     history.done = false;
     loadMoreHistory();
   }
+  requestAnimationFrame(reportExpandedSize);
 }
 
 function closeHistory() {
@@ -196,7 +310,7 @@ function closeHistory() {
   setMode(false);
 }
 
-/* ---------- 聊天 ---------- */
+/* ---------------- 聊天 ---------------- */
 
 function recentContext(limit) {
   let arr = [];
@@ -259,7 +373,7 @@ window.__sansCallback = function (id, resultJson) {
   }
 };
 
-/* ---------- 主动回复 ---------- */
+/* ---------------- 主动回复 ---------------- */
 
 function proactiveTick() {
   if (S('proactive', '1') !== '1') return;
@@ -269,59 +383,37 @@ function proactiveTick() {
   if (Math.random() < rate) showDialog(pick(PROACTIVE));
 }
 
-/* ---------- 事件绑定 ---------- */
+/* ---------------- 事件 ---------------- */
 
-/* 拖拽：手指移动就拖动整个悬浮窗，没移动才算点击 */
-let dragState = null;
-let suppressClick = false;
+document.addEventListener('touchstart', function () { initAudio(); }, { passive: true, once: true });
+document.addEventListener('mousedown', function () { initAudio(); }, { once: true });
 
-const petEl = $('#pet');
-
-petEl.addEventListener('touchstart', function (e) {
-  const t = e.touches[0];
-  dragState = { x: t.clientX, y: t.clientY, moved: false };
-}, { passive: true });
-
-petEl.addEventListener('touchmove', function (e) {
-  if (!dragState) return;
-  const t = e.touches[0];
-  const dx = t.clientX - dragState.x;
-  const dy = t.clientY - dragState.y;
-  if (!dragState.moved && Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
-  dragState.moved = true;
-  const ratio = window.devicePixelRatio || 1;
-  try { B.moveBy(dx * ratio, dy * ratio); } catch (err) {}
-  dragState.x = t.clientX;
-  dragState.y = t.clientY;
-}, { passive: true });
-
-petEl.addEventListener('touchend', function () {
-  if (dragState && dragState.moved) {
-    try { B.savePetPosition(); } catch (e) {}
-    suppressClick = true;
-    setTimeout(function () { suppressClick = false; }, 350);
-  }
-  dragState = null;
-}, { passive: true });
-
-petEl.addEventListener('touchcancel', function () {
-  dragState = null;
-}, { passive: true });
-
-petEl.addEventListener('click', function () {
+$('#pet').addEventListener('click', function () {
   if (suppressClick) return;
-  try { if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); } catch (e) {}
+  initAudio();
   showDialog(pick(REACTIONS), { expand: true });
 });
 
 $('#dialog').addEventListener('click', onClickDialog);
 
 $('#btnChat').addEventListener('click', function () {
+  initAudio();
   setMode(true);
   $('#historyPanel').classList.add('hidden');
+  $('#dialog').classList.remove('hidden');
+  $('#dialog').classList.add('has-input');
   $('#chatBar').classList.remove('hidden');
-  setTimeout(function () { $('#chatInput').focus(); }, 150);
+  const dt = $('#dialogText');
+  if (!dt.textContent.trim()) dt.textContent = '……说吧，我听着。';
+  requestAnimationFrame(reportExpandedSize);
+  setTimeout(function () {
+    reportExpandedSize();
+    $('#chatInput').focus();
+  }, 220);
 });
+
+/* 点输入框不要把对话框关掉 */
+$('#chatBar').addEventListener('click', function (e) { e.stopPropagation(); });
 
 $('#btnSend').addEventListener('click', sendMessage);
 $('#chatInput').addEventListener('keydown', function (e) {
@@ -337,3 +429,16 @@ $('#historyList').addEventListener('scroll', function () {
 });
 
 setInterval(proactiveTick, 45000);
+
+/* 启动 */
+initAudio();
+applyPetScale();
+window.__applySettings = function () {
+  applyPetScale();
+  setTimeout(reportCompactSize, 120);
+};
+
+window.addEventListener('load', function () {
+  reportCompactSize();
+  setTimeout(reportCompactSize, 300);
+});

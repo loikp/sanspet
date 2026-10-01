@@ -10,11 +10,13 @@ import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.WindowManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 class OverlayPetService : Service() {
@@ -28,10 +30,24 @@ class OverlayPetService : Service() {
     private var expanded = false
     private var added = false
 
-    /** 桌宠左上角坐标（像素），紧凑模式用 */
+    /** 紧凑窗口左上角（像素） */
     private var posX = 0
     private var posY = 0
 
+    /** 由网页上报的内容尺寸（像素） */
+    private var compactW = 0
+    private var compactH = 0
+    private var expandedW = 0
+    private var expandedH = 0
+
+    private var dragging = false
+    private var dragMoved = false
+    private var dragStartRawX = 0f
+    private var dragStartRawY = 0f
+    private var dragStartX = 0
+    private var dragStartY = 0
+
+    private val density: Float get() = resources.displayMetrics.density
     private val screenW: Int get() = resources.displayMetrics.widthPixels
     private val screenH: Int get() = resources.displayMetrics.heightPixels
 
@@ -40,6 +56,9 @@ class OverlayPetService : Service() {
         startForegroundNotification()
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
 
+        // 先用估算尺寸放好，等网页上报真实尺寸后再校正
+        compactW = dp(120)
+        compactH = dp(150)
         initPosition()
 
         webView = WebView(this).apply {
@@ -54,14 +73,20 @@ class OverlayPetService : Service() {
             addJavascriptInterface(bridge, "SansPet")
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
-                    // 等页面渲染完再挂上去，避免出场闪一下
+                    view?.evaluateJavascript(
+                        "window.__screen && window.__screen(${screenW / density}, ${screenH / density})",
+                        null
+                    )
                     showWhenReady()
                 }
             }
             loadUrl("file:///android_asset/overlay.html")
         }
         bridge.attach(webView)
-        params = buildParams(false)
+        attachDragHandler()
+
+        params = buildParams()
+        applyLayout()
     }
 
     private fun showWhenReady() {
@@ -72,88 +97,171 @@ class OverlayPetService : Service() {
         } catch (_: Exception) {
             return
         }
+        applyLayout()
         webView.animate().alpha(1f).setDuration(160).start()
     }
 
-    /** 读取上次保存的位置，没有就放在右下角 */
     private fun initPosition() {
-        val w = dp(COMPACT_W)
-        val h = dp(COMPACT_H)
-        val maxX = (screenW - w).coerceAtLeast(0)
-        val maxY = (screenH - h).coerceAtLeast(0)
+        val maxX = (screenW - compactW).coerceAtLeast(0)
+        val maxY = (screenH - compactH).coerceAtLeast(0)
         val sx = store.get(KEY_X, "").toIntOrNull()
         val sy = store.get(KEY_Y, "").toIntOrNull()
         posX = (sx ?: (maxX - dp(6))).coerceIn(0, maxX)
         posY = (sy ?: (maxY - dp(90))).coerceIn(0, maxY)
     }
 
-    private fun buildParams(isExpanded: Boolean): WindowManager.LayoutParams {
+    private fun buildParams(): WindowManager.LayoutParams {
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         } else {
             @Suppress("DEPRECATION")
             WindowManager.LayoutParams.TYPE_PHONE
         }
-
-        val base = WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
-
-        return if (isExpanded) {
-            WindowManager.LayoutParams(
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.MATCH_PARENT,
-                type,
-                base,
-                PixelFormat.TRANSLUCENT
-            ).apply {
-                gravity = Gravity.TOP or Gravity.START
-                softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-            }
-        } else {
-            WindowManager.LayoutParams(
-                dp(COMPACT_W), dp(COMPACT_H), type,
-                base or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-                PixelFormat.TRANSLUCENT
-            ).apply {
-                gravity = Gravity.TOP or Gravity.START
-                x = posX
-                y = posY
-            }
+        return WindowManager.LayoutParams(
+            compactW,
+            compactH,
+            type,
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = posX
+            y = posY
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
         }
     }
 
-    /** 由网页里的拖拽调用，dx/dy 是本次移动的像素增量 */
-    fun moveBy(dx: Double, dy: Double) {
-        if (expanded) return
-        val maxX = (screenW - params.width).coerceAtLeast(0)
-        val maxY = (screenH - params.height).coerceAtLeast(0)
-        posX = (posX + dx).roundToInt().coerceIn(0, maxX)
-        posY = (posY + dy).roundToInt().coerceIn(0, maxY)
-        params.x = posX
-        params.y = posY
+    /**
+     * 窗口 = 内容大小。
+     * 展开时向右上生长，角色在屏幕上的位置保持不变；
+     * 窗口之外的地方不遮挡，可以正常点击。
+     */
+    private fun applyLayout() {
+        if (!added) return
+
+        val w: Int
+        val h: Int
+        if (expanded) {
+            w = if (expandedW > 0) expandedW else compactW
+            h = if (expandedH > 0) expandedH else compactH
+        } else {
+            w = compactW
+            h = compactH
+        }
+
+        var x = if (expanded) posX + compactW - w else posX
+        var y = if (expanded) posY + compactH - h else posY
+        x = x.coerceIn(0, (screenW - w).coerceAtLeast(0))
+        y = y.coerceIn(0, (screenH - h).coerceAtLeast(0))
+
+        params.width = w
+        params.height = h
+        params.x = x
+        params.y = y
+        params.flags = if (expanded) {
+            params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+        } else {
+            params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        }
+
         try {
             wm.updateViewLayout(webView, params)
         } catch (_: Exception) {
         }
     }
 
-    fun savePosition() {
-        store.set(KEY_X, posX.toString())
-        store.set(KEY_Y, posY.toString())
+    /** 网页上报紧凑尺寸（CSS px） */
+    fun setCompactSize(w: Double, h: Double) {
+        val pw = (w * density).roundToInt().coerceAtLeast(dp(30))
+        val ph = (h * density).roundToInt().coerceAtLeast(dp(30))
+        if (pw == compactW && ph == compactH) return
+        compactW = pw
+        compactH = ph
+        if (!expanded) applyLayout()
+    }
+
+    /** 网页上报展开尺寸（CSS px） */
+    fun setExpandedSize(w: Double, h: Double) {
+        val pw = (w * density).roundToInt().coerceAtLeast(dp(30))
+        val ph = (h * density).roundToInt().coerceAtLeast(dp(30))
+        val maxW = screenW
+        val maxH = screenH
+        val cw = pw.coerceAtMost(maxW)
+        val ch = ph.coerceAtMost(maxH)
+        if (cw == expandedW && ch == expandedH) return
+        expandedW = cw
+        expandedH = ch
+        if (expanded) applyLayout()
     }
 
     fun setExpanded(value: Boolean) {
         if (expanded == value) return
         expanded = value
-        params = buildParams(value)
-        if (added) {
-            try {
-                wm.updateViewLayout(webView, params)
-            } catch (_: Exception) {
-            }
-        }
+        applyLayout()
         webView.evaluateJavascript("window.__setExpanded && window.__setExpanded($value)", null)
+    }
+
+    fun refresh() {
+        webView.evaluateJavascript("window.__applySettings && window.__applySettings()", null)
+    }
+
+    private fun savePosition() {
+        store.set(KEY_X, posX.toString())
+        store.set(KEY_Y, posY.toString())
+    }
+
+    /**
+     * 原生拖拽。用 rawX/rawY（屏幕绝对坐标），不受窗口自身移动影响，所以不会抖。
+     * 返回 false，让 WebView 继续处理点击。
+     */
+    private fun attachDragHandler() {
+        val slop = dp(8)
+        webView.setOnTouchListener { _, event ->
+            if (expanded) return@setOnTouchListener false
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    dragStartRawX = event.rawX
+                    dragStartRawY = event.rawY
+                    dragStartX = posX
+                    dragStartY = posY
+                    dragging = true
+                    dragMoved = false
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (dragging) {
+                        val dx = event.rawX - dragStartRawX
+                        val dy = event.rawY - dragStartRawY
+                        if (!dragMoved && (abs(dx) > slop || abs(dy) > slop)) dragMoved = true
+                        if (dragMoved) {
+                            val maxX = (screenW - compactW).coerceAtLeast(0)
+                            val maxY = (screenH - compactH).coerceAtLeast(0)
+                            posX = (dragStartX + dx).roundToInt().coerceIn(0, maxX)
+                            posY = (dragStartY + dy).roundToInt().coerceIn(0, maxY)
+                            params.x = posX
+                            params.y = posY
+                            try {
+                                wm.updateViewLayout(webView, params)
+                            } catch (_: Exception) {
+                            }
+                        }
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (dragging && dragMoved) {
+                        savePosition()
+                        webView.evaluateJavascript(
+                            "window.__suppressClick && window.__suppressClick()", null
+                        )
+                    }
+                    dragging = false
+                    dragMoved = false
+                }
+            }
+            false
+        }
     }
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
@@ -195,8 +303,6 @@ class OverlayPetService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
-        private const val COMPACT_W = 176
-        private const val COMPACT_H = 216
         private const val KEY_X = "petX"
         private const val KEY_Y = "petY"
     }

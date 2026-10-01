@@ -9,6 +9,7 @@ const FIELDS = [
   ['temperature', '0.8'],
   ['userName', ''],
   ['systemPrompt', ''],
+  ['petScale', '1'],
   ['contextLimit', '20'],
   ['typeSpeed', '45'],
   ['proactiveRate', '0.08']
@@ -32,6 +33,7 @@ function saveSettings() {
   });
   B.setSetting('sound', $('#sound').checked ? '1' : '0');
   B.setSetting('proactive', $('#proactive').checked ? '1' : '0');
+  try { B.refreshPet(); } catch (e) {}
   B.toast('已保存');
 }
 
