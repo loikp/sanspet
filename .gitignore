@@ -10,3 +10,8 @@
 local.properties
 /app/build
 /keystore/release.keystore
+
+# 根目录的素材原件（正式字体在 app/src/main/assets/fonts/）
+/PUTUI-Regular.ttf
+/sanschinese.ttf
+/sans.png
