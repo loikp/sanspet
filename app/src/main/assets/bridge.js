@@ -36,6 +36,8 @@
     clearMessages: () => localStorage.removeItem(K),
 
     setExpanded: () => {},
+    moveBy: () => {},
+    savePetPosition: () => {},
     closeOverlay: () => {},
     startOverlay: () => alert('浏览器预览模式：APK 里这里会开启桌面悬浮窗'),
     stopOverlay: () => {},
@@ -69,6 +71,23 @@
         out = { ok: false, error: String(e) };
       }
       if (window.__sansCallback) window.__sansCallback(cbId, JSON.stringify(out));
+    },
+
+    listModels: async (payloadJson, cbId) => {
+      let out;
+      try {
+        const p = JSON.parse(payloadJson);
+        const url = String(p.baseUrl || '').replace(/\/+$/, '') + '/models';
+        const headers = { 'Accept': 'application/json' };
+        if (p.apiKey) headers['Authorization'] = 'Bearer ' + p.apiKey;
+        const res = await fetch(url, { headers });
+        const j = await res.json().catch(() => ({}));
+        const models = (j && j.data ? j.data : []).map(function (m) { return m.id; }).filter(Boolean);
+        out = models.length ? { ok: true, models: models } : { ok: false, error: '没有拿到模型列表' };
+      } catch (e) {
+        out = { ok: false, error: String(e) };
+      }
+      if (window.__modelCallback) window.__modelCallback(cbId, JSON.stringify(out));
     }
   };
 })();

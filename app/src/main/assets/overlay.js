@@ -271,7 +271,45 @@ function proactiveTick() {
 
 /* ---------- 事件绑定 ---------- */
 
-$('#pet').addEventListener('click', function () {
+/* 拖拽：手指移动就拖动整个悬浮窗，没移动才算点击 */
+let dragState = null;
+let suppressClick = false;
+
+const petEl = $('#pet');
+
+petEl.addEventListener('touchstart', function (e) {
+  const t = e.touches[0];
+  dragState = { x: t.clientX, y: t.clientY, moved: false };
+}, { passive: true });
+
+petEl.addEventListener('touchmove', function (e) {
+  if (!dragState) return;
+  const t = e.touches[0];
+  const dx = t.clientX - dragState.x;
+  const dy = t.clientY - dragState.y;
+  if (!dragState.moved && Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+  dragState.moved = true;
+  const ratio = window.devicePixelRatio || 1;
+  try { B.moveBy(dx * ratio, dy * ratio); } catch (err) {}
+  dragState.x = t.clientX;
+  dragState.y = t.clientY;
+}, { passive: true });
+
+petEl.addEventListener('touchend', function () {
+  if (dragState && dragState.moved) {
+    try { B.savePetPosition(); } catch (e) {}
+    suppressClick = true;
+    setTimeout(function () { suppressClick = false; }, 350);
+  }
+  dragState = null;
+}, { passive: true });
+
+petEl.addEventListener('touchcancel', function () {
+  dragState = null;
+}, { passive: true });
+
+petEl.addEventListener('click', function () {
+  if (suppressClick) return;
   try { if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume(); } catch (e) {}
   showDialog(pick(REACTIONS), { expand: true });
 });

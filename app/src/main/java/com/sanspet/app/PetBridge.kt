@@ -20,7 +20,7 @@ import java.net.URL
 
 /**
  * WebView 与原生之间的桥。
- * 网络请求走原生层，避免浏览器跨域问题，也能保护 Key。
+ * 网络请求走原生层，避免浏览器跨域问题。
  */
 class PetBridge(
     private val context: Context,
@@ -33,6 +33,10 @@ class PetBridge(
 
     fun attach(webView: WebView) {
         webRef = WeakReference(webView)
+    }
+
+    private fun callJs(js: String) {
+        main.post { webRef?.get()?.evaluateJavascript(js, null) }
     }
 
     // ---------- 设置 / 记忆 ----------
@@ -64,6 +68,16 @@ class PetBridge(
     }
 
     // ---------- 悬浮窗 ----------
+
+    @JavascriptInterface
+    fun moveBy(dx: Double, dy: Double) {
+        main.post { overlay?.moveBy(dx, dy) }
+    }
+
+    @JavascriptInterface
+    fun savePetPosition() {
+        main.post { overlay?.savePosition() }
+    }
 
     @JavascriptInterface
     fun setExpanded(expanded: Boolean) {
@@ -113,7 +127,7 @@ class PetBridge(
         main.post { Toast.makeText(context, msg ?: "", Toast.LENGTH_SHORT).show() }
     }
 
-    // ---------- AI 请求 ----------
+    // ---------- AI 对话 ----------
 
     @JavascriptInterface
     fun chat(payloadJson: String?, callbackId: String?) {
@@ -121,9 +135,10 @@ class PetBridge(
         val cb = callbackId ?: "0"
         Thread {
             val result = doChat(payload)
-            val js = "window.__sansCallback && window.__sansCallback(" +
-                    JSONObject.quote(cb) + "," + JSONObject.quote(result) + ")"
-            main.post { webRef?.get()?.evaluateJavascript(js, null) }
+            callJs(
+                "window.__sansCallback && window.__sansCallback(" +
+                        JSONObject.quote(cb) + "," + JSONObject.quote(result) + ")"
+            )
         }.start()
     }
 
@@ -185,6 +200,70 @@ class PetBridge(
             }
         } catch (e: Exception) {
             Log.w("SansPet", "chat failed", e)
+            JSONObject().put("ok", false).put("error", e.message ?: "请求失败").toString()
+        } finally {
+            conn?.disconnect()
+        }
+    }
+
+    // ---------- 获取模型列表 ----------
+
+    @JavascriptInterface
+    fun listModels(payloadJson: String?, callbackId: String?) {
+        val payload = payloadJson ?: "{}"
+        val cb = callbackId ?: "0"
+        Thread {
+            val result = doListModels(payload)
+            callJs(
+                "window.__modelCallback && window.__modelCallback(" +
+                        JSONObject.quote(cb) + "," + JSONObject.quote(result) + ")"
+            )
+        }.start()
+    }
+
+    private fun doListModels(payload: String): String {
+        var conn: HttpURLConnection? = null
+        return try {
+            val req = JSONObject(payload)
+            val baseUrl = req.optString("baseUrl").trim().trimEnd('/')
+            val apiKey = req.optString("apiKey")
+            if (baseUrl.isEmpty()) {
+                return JSONObject().put("ok", false).put("error", "请先填写 API 地址").toString()
+            }
+
+            conn = (URL("$baseUrl/models").openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 15000
+                readTimeout = 30000
+                setRequestProperty("Accept", "application/json")
+                if (apiKey.isNotEmpty()) {
+                    setRequestProperty("Authorization", "Bearer $apiKey")
+                }
+            }
+
+            val code = conn.responseCode
+            val text = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
+
+            if (code !in 200..299) {
+                return JSONObject().put("ok", false)
+                    .put("error", "HTTP $code: ${text.take(200)}").toString()
+            }
+
+            val arr = JSONObject(text).optJSONArray("data") ?: JSONArray()
+            val models = JSONArray()
+            for (i in 0 until arr.length()) {
+                val id = arr.optJSONObject(i)?.optString("id").orEmpty()
+                if (id.isNotEmpty()) models.put(id)
+            }
+
+            if (models.length() == 0) {
+                JSONObject().put("ok", false).put("error", "没有拿到模型列表").toString()
+            } else {
+                JSONObject().put("ok", true).put("models", models).toString()
+            }
+        } catch (e: Exception) {
+            Log.w("SansPet", "listModels failed", e)
             JSONObject().put("ok", false).put("error", e.message ?: "请求失败").toString()
         } finally {
             conn?.disconnect()

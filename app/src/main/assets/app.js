@@ -79,4 +79,44 @@ document.addEventListener('visibilitychange', function () {
   if (!document.hidden) refreshPermission();
 });
 
+/* ---------- 模型列表 ---------- */
+
+function requestModels() {
+  const baseUrl = ($('#baseUrl').value || '').trim();
+  const apiKey = ($('#apiKey').value || '').trim();
+  if (!baseUrl) { B.toast('先填 Base URL'); return; }
+  B.toast('正在获取模型列表…');
+  const cbId = 'm' + Date.now();
+  try {
+    B.listModels(JSON.stringify({ baseUrl: baseUrl, apiKey: apiKey }), cbId);
+  } catch (e) {
+    B.toast('获取失败');
+  }
+}
+
+window.__modelCallback = function (id, json) {
+  let r = {};
+  try { r = JSON.parse(json); } catch (e) { r = { ok: false, error: '解析失败' }; }
+  if (!r.ok) { B.toast('获取失败：' + (r.error || '')); return; }
+  const sel = $('#modelSelect');
+  sel.innerHTML = '';
+  r.models.forEach(function (m) {
+    const o = document.createElement('option');
+    o.value = m;
+    o.textContent = m;
+    sel.appendChild(o);
+  });
+  sel.classList.remove('hidden');
+  const cur = ($('#model').value || '').trim();
+  sel.value = (cur && r.models.indexOf(cur) >= 0) ? cur : r.models[0];
+  $('#model').value = sel.value;
+  B.toast('拿到 ' + r.models.length + ' 个模型');
+};
+
+$('#btnModels').addEventListener('click', requestModels);
+
+$('#modelSelect').addEventListener('change', function () {
+  $('#model').value = $('#modelSelect').value;
+});
+
 loadSettings();
