@@ -117,10 +117,6 @@ class PetBridge(
         main.post { overlay?.refresh() }
     }
 
-    @JavascriptInterface
-    fun setExpanded(expanded: Boolean) {
-        main.post { overlay?.setExpanded(expanded) }
-    }
 
     @JavascriptInterface
     fun hasOverlayPermission(): Boolean =

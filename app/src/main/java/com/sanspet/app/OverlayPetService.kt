@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Region
 import android.graphics.Rect
 import android.os.Build
 import android.os.IBinder
@@ -249,15 +250,41 @@ class OverlayPetService : Service() {
      * 窗口里的空白处直接穿透到桌面。
      */
     private fun attachTouchRegion() {
-        webView.viewTreeObserver.addOnComputeInternalInsetsListener { info ->
+        // ViewTreeObserver 的 insets 接口是隐藏 API，用反射注册；
+        // 失败就退化成整个窗口都可点，不影响其他功能。
+        try {
+            val listenerClass = Class.forName("android.view.ViewTreeObserver\$OnComputeInternalInsetsListener")
+            val proxy = java.lang.reflect.Proxy.newProxyInstance(
+                listenerClass.classLoader,
+                arrayOf(listenerClass)
+            ) { _, method, args ->
+                if (method.name == "onComputeInternalInsets" && args != null && args.isNotEmpty()) {
+                    applyTouchInsets(args[0])
+                }
+                null
+            }
+            val m = ViewTreeObserver::class.java.getDeclaredMethod(
+                "addOnComputeInternalInsetsListener", listenerClass
+            )
+            m.isAccessible = true
+            m.invoke(webView.viewTreeObserver, proxy)
+        } catch (_: Throwable) {
+        }
+    }
+
+    private fun applyTouchInsets(info: Any) {
+        try {
+            val cls = info.javaClass
+            val region = cls.getMethod("getTouchableRegion").invoke(info) as Region
+            val setInsets = cls.getMethod("setTouchableInsets", Integer.TYPE)
             if (touchRects.isEmpty()) {
-                info.setTouchableInsets(ViewTreeObserver.InternalInsetsInfo.TOUCHABLE_INSETS_FRAME)
+                setInsets.invoke(info, INSETS_FRAME)
             } else {
-                info.setTouchableInsets(ViewTreeObserver.InternalInsetsInfo.TOUCHABLE_INSETS_REGION)
-                val region = info.touchableRegion
                 region.setEmpty()
                 for (r in touchRects) region.union(r)
+                setInsets.invoke(info, INSETS_REGION)
             }
+        } catch (_: Throwable) {
         }
     }
 
@@ -355,6 +382,8 @@ class OverlayPetService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
+        private const val INSETS_FRAME = 0
+        private const val INSETS_REGION = 3
         private const val KEY_X = "petX"
         private const val KEY_Y = "petY"
     }
