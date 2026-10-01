@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" shape-rendering="crispEdges">
+  <g>
+    <!-- 占位角色：像素骷髅风，正式美术可替换此文件 -->
+    <rect x="20" y="10" width="24" height="16" fill="#ffffff"/>
+    <rect x="16" y="14" width="4" height="8" fill="#ffffff"/>
+    <rect x="44" y="14" width="4" height="8" fill="#ffffff"/>
+    <rect x="24" y="16" width="5" height="5" fill="#000000"/>
+    <rect x="35" y="16" width="5" height="5" fill="#000000"/>
+    <rect x="27" y="24" width="3" height="2" fill="#000000"/>
+    <rect x="34" y="24" width="3" height="2" fill="#000000"/>
+    <rect x="22" y="26" width="20" height="4" fill="#000000"/>
+    <rect x="26" y="30" width="3" height="3" fill="#000000"/>
+    <rect x="31" y="30" width="3" height="3" fill="#000000"/>
+    <rect x="36" y="30" width="3" height="3" fill="#000000"/>
+    <!-- 身体 -->
+    <rect x="24" y="34" width="16" height="12" fill="#ffffff"/>
+    <rect x="28" y="36" width="8" height="8" fill="#000000"/>
+    <rect x="14" y="36" width="10" height="4" fill="#ffffff"/>
+    <rect x="40" y="36" width="10" height="4" fill="#ffffff"/>
+    <!-- 腿 -->
+    <rect x="24" y="46" width="6" height="10" fill="#ffffff"/>
+    <rect x="34" y="46" width="6" height="10" fill="#ffffff"/>
+    <rect x="20" y="54" width="12" height="4" fill="#ffffff"/>
+    <rect x="32" y="54" width="12" height="4" fill="#ffffff"/>
+    <!-- 外套颜色 -->
+    <rect x="22" y="32" width="20" height="4" fill="#2f6bff"/>
+  </g>
+</svg>

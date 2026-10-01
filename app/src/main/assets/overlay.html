@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>SansPet</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="overlay-style.css">
+</head>
+<body class="overlay compact">
+
+<div id="stage">
+
+  <div id="historyPanel" class="hidden">
+    <div class="history-head">
+      <span>对话历史</span>
+      <button id="btnHistoryClose" class="icon-btn small"><img src="icons/close.svg" alt="关闭"></button>
+    </div>
+    <div id="historyList"></div>
+    <div id="historyEnd" class="hidden">没有更多了</div>
+  </div>
+
+  <div id="dialog" class="ut-box hidden">
+    <div id="dialogText"></div>
+    <div class="hint">▼</div>
+  </div>
+
+  <div id="chatBar" class="hidden">
+    <input id="chatInput" type="text" placeholder="说点什么……" autocomplete="off">
+    <button id="btnSend" class="icon-btn"><img src="icons/send.svg" alt="发送"></button>
+  </div>
+
+  <div id="petWrap">
+    <img id="pet" src="sans.png" alt="Sans" onerror="this.onerror=null;this.src='sans.svg';">
+    <div id="petButtons">
+      <button id="btnChat" class="icon-btn" title="聊天"><img src="icons/chat.svg" alt="聊天"></button>
+      <button id="btnHistory" class="icon-btn" title="历史"><img src="icons/history.svg" alt="历史"></button>
+    </div>
+  </div>
+
+</div>
+
+<script src="bridge.js"></script>
+<script src="overlay.js"></script>
+</body>
+</html>

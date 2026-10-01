@@ -1,0 +1,111 @@
+/* 悬浮窗专用布局 */
+
+body.overlay { width: 100vw; height: 100vh; }
+
+#stage { position: relative; width: 100%; height: 100%; }
+
+#petWrap {
+  position: absolute;
+  right: 6px; bottom: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  transition: right .15s, bottom .15s;
+}
+
+#pet {
+  width: 110px; height: auto; max-height: 130px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(4px 4px 0 rgba(0,0,0,.85));
+  animation: idle 2.6s ease-in-out infinite;
+  cursor: pointer;
+  user-select: none;
+}
+
+@keyframes idle {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-6px) scale(1.03); }
+}
+
+#petButtons { display: flex; gap: 6px; }
+
+/* ---------- 展开态 ---------- */
+body.overlay.expanded #petWrap { right: 14px; bottom: 96px; }
+
+#dialog {
+  position: absolute;
+  left: 50%; top: 12px;
+  transform: translateX(-50%);
+  width: min(92vw, 560px);
+  max-height: 55vh;
+  overflow-y: auto;
+  cursor: pointer;
+  z-index: 30;
+}
+
+#chatBar {
+  position: absolute;
+  left: 50%; bottom: 14px;
+  transform: translateX(-50%);
+  width: min(94vw, 620px);
+  display: flex;
+  gap: 8px;
+  z-index: 30;
+}
+
+#chatInput {
+  flex: 1;
+  background: var(--black);
+  color: var(--white);
+  border: 3px solid var(--white);
+  border-radius: 0;
+  font-family: inherit;
+  font-size: 15px;
+  padding: 10px 12px;
+  outline: none;
+}
+#chatInput::placeholder { color: #888; }
+
+#historyPanel {
+  position: absolute;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(94vw, 620px);
+  height: min(80vh, 640px);
+  background: var(--black);
+  border: 3px solid var(--white);
+  display: flex;
+  flex-direction: column;
+  z-index: 40;
+}
+
+.history-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px;
+  color: var(--white);
+  border-bottom: 3px solid var(--white);
+  font-weight: bold;
+}
+
+#historyList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  scrollbar-width: thin;
+}
+
+.history-item { font-size: 13px; }
+.history-item .who { color: var(--yellow); font-weight: bold; margin-right: 6px; }
+.history-item .time { color: #777; font-size: 11px; }
+.history-empty { color: #888; text-align: center; padding: 30px 0; }
+#historyEnd { color: #777; text-align: center; padding: 10px; font-size: 12px; }
+
+/* 紧凑模式：只显示角色和两个按钮 */
+body.overlay.compact #dialog,
+body.overlay.compact #chatBar,
+body.overlay.compact #historyPanel { display: none !important; }

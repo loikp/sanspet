@@ -1,0 +1,92 @@
+/* ---------- 字体 ---------- */
+
+/* Sans 对话字体：中文 + 拉丁 + 数字，全都是原作那套 */
+@font-face {
+  font-family: 'SansDialog';
+  src: url('fonts/sanschinese.ttf') format('truetype');
+  font-display: swap;
+}
+
+/* 应用默认字体：其它所有文字都用它 */
+@font-face {
+  font-family: 'AppUI';
+  src: url('fonts/PUTUI-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+
+:root {
+  --black: #000000;
+  --white: #ffffff;
+  --blue: #2f6bff;
+  --yellow: #ffe600;
+  --orange: #ff6a00;
+  --purple: #8b3dff;
+
+  /* Sans 对话：sanschinese 一套搞定 */
+  --font-dialog: 'SansDialog', cursive;
+  /* 其它所有文字：PUTUI */
+  --font-ui: 'AppUI', sans-serif;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  font-family: var(--font-ui);
+  overflow: hidden;
+}
+
+/* ---------- UT 对话框（Sans 对话字体） ---------- */
+.ut-box {
+  background: var(--black);
+  border: 3px solid var(--white);
+  border-radius: 0;
+  color: var(--white);
+  padding: 12px 14px;
+  font-family: var(--font-dialog);
+  font-size: 16px;
+  line-height: 1.6;
+  letter-spacing: 0.5px;
+  box-shadow: none;
+}
+
+.ut-box .hint {
+  text-align: right;
+  opacity: 0.9;
+  animation: blink 1s steps(2, start) infinite;
+}
+
+@keyframes blink { to { visibility: hidden; } }
+
+.hidden { display: none !important; }
+
+/* ---------- 粗野新丑按钮 ---------- */
+.brutal-btn {
+  background: var(--yellow);
+  color: var(--black);
+  border: 3px solid var(--black);
+  box-shadow: 5px 5px 0 var(--black);
+  font-family: var(--font-ui);
+  font-weight: bold;
+  font-size: 15px;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+.brutal-btn:active { transform: translate(3px, 3px); box-shadow: 2px 2px 0 var(--black); }
+.brutal-btn.blue { background: var(--blue); color: var(--white); }
+.brutal-btn.orange { background: var(--orange); color: var(--black); }
+
+.icon-btn {
+  width: 44px; height: 44px;
+  padding: 0;
+  background: var(--black);
+  border: 3px solid var(--white);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.icon-btn img { width: 22px; height: 22px; display: block; }
+.icon-btn:active { transform: translate(2px, 2px); }
+.icon-btn.small { width: 32px; height: 32px; border-width: 2px; }
+.icon-btn.small img { width: 16px; height: 16px; }
