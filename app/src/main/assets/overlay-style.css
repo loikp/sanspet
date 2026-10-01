@@ -6,15 +6,15 @@ body.overlay {
 
 #stage { position: relative; width: 100%; height: 100%; }
 
-/* 内容贴住窗口右下角：窗口向右上生长时，角色在屏幕上的位置不变 */
+/* 内容盒子：位置由原生通过 __layout 反推，宠物中心是基准点 */
 #petWrap {
   position: absolute;
-  right: 0;
-  bottom: 0;
+  left: 0;
+  top: 0;
   padding: 4px;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: center;
   gap: 6px;
   z-index: 20;
 }
@@ -37,7 +37,12 @@ body.overlay {
   50% { transform: translateY(-6px) scale(1.03); }
 }
 
-#petButtons { display: flex; gap: 5px; }
+/* 两个按钮在宠物正下方居中 */
+#petButtons {
+  display: flex;
+  gap: 5px;
+  justify-content: center;
+}
 
 /* ---------------- 对话框 ---------------- */
 
@@ -45,9 +50,8 @@ body.overlay {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  width: fit-content;
-  max-width: var(--dialog-max, 480px);
-  max-height: 50vh;
+  width: 250px;
+  max-height: var(--dialog-max-h, 320px);
   overflow-y: auto;
   cursor: pointer;
   text-align: left;
@@ -66,7 +70,12 @@ body.overlay {
   flex-direction: column;
 }
 
-#dialogText { word-break: break-word; }
+/* 一行装 12 个中文字符 */
+#dialogText {
+  flex: 1 1 auto;
+  min-width: 0;
+  word-break: break-word;
+}
 
 #dialog .hint {
   align-self: flex-end;
@@ -75,14 +84,12 @@ body.overlay {
 
 /* ---------------- 输入条 ---------------- */
 
-/* 输入条现在在对话框内部 */
+/* 输入条：独立一格，不塞进对话框 */
 #chatBar {
   display: flex;
   gap: 6px;
-  margin-top: 10px;
+  width: 250px;
 }
-
-#dialog.has-input { width: var(--dialog-max, 480px); }
 
 #chatInput {
   flex: 1;
@@ -98,14 +105,15 @@ body.overlay {
 }
 #chatInput::placeholder { color: #888; }
 
-/* ---------------- 历史 ---------------- */
+/* ---------------- 历史：接近手机宽度、够大，不自适应 ---------------- */
 
 #historyPanel {
   position: absolute;
-  left: 50%; top: 50%;
+  left: 50%;
+  top: 50%;
   transform: translate(-50%, -50%);
-  width: min(94vw, 620px);
-  height: min(80vh, 640px);
+  width: calc(var(--screen-w, 360px) * 0.94);
+  height: calc(var(--screen-h, 640px) * 0.82);
   background: var(--black);
   border: 3px solid var(--white);
   display: flex;
@@ -137,9 +145,7 @@ body.overlay {
 .history-item .who { color: var(--yellow); font-weight: bold; margin-right: 6px; }
 .history-item .time { color: #777; font-size: 11px; font-family: var(--font-ui); }
 .history-empty { color: #888; text-align: center; padding: 30px 0; font-family: var(--font-ui); }
-#historyEnd { color: #777; text-align: center; padding: 8px; font-size: 12px; font-family: var(--font-ui); }
 
 /* 紧凑模式：只显示角色和两个按钮 */
 body.overlay.compact #dialog,
-body.overlay.compact #chatBar,
 body.overlay.compact #historyPanel { display: none !important; }

@@ -80,8 +80,8 @@ html, body {
 .icon-btn {
   width: 34px; height: 34px;
   padding: 0;
-  background: var(--black);
-  border: 3px solid var(--white);
+  background: var(--white);
+  border: 3px solid var(--black);
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
 }

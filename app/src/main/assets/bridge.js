@@ -36,8 +36,10 @@
     clearMessages: () => localStorage.removeItem(K),
 
     setExpanded: () => {},
-    setCompactSize: () => {},
-    setExpandedSize: () => {},
+    setPetSize: () => {},
+    setWindowRect: () => {},
+    setFocusable: () => {},
+    setTouchRects: () => {},
     refreshPet: () => {},
     moveBy: () => {},
     savePetPosition: () => {},

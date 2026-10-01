@@ -7,10 +7,12 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.os.Build
 import android.os.IBinder
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -27,25 +29,32 @@ class OverlayPetService : Service() {
     private val bridge: PetBridge by lazy { PetBridge(this, this) }
     private val store: Store by lazy { Store(this) }
 
-    private var expanded = false
     private var added = false
+    private var focusable = false
 
-    /** 紧凑窗口左上角（像素） */
+    /** 宠物中心在屏幕上的坐标（像素） */
     private var posX = 0
     private var posY = 0
 
-    /** 由网页上报的内容尺寸（像素） */
-    private var compactW = 0
-    private var compactH = 0
-    private var expandedW = 0
-    private var expandedH = 0
+    /** 宠物实际尺寸（像素） */
+    private var petW = 0
+    private var petH = 0
+
+    /** 窗口矩形（像素），由网页上报的内容尺寸决定 */
+    private var winX = 0
+    private var winY = 0
+    private var winW = 0
+    private var winH = 0
+
+    /** 只有这些区域接收触摸，其余穿透到桌面 */
+    private var touchRects: List<Rect> = emptyList()
 
     private var dragging = false
     private var dragMoved = false
     private var dragStartRawX = 0f
     private var dragStartRawY = 0f
-    private var dragStartX = 0
-    private var dragStartY = 0
+    private var dragStartPosX = 0
+    private var dragStartPosY = 0
 
     private val density: Float get() = resources.displayMetrics.density
     private val screenW: Int get() = resources.displayMetrics.widthPixels
@@ -56,14 +65,17 @@ class OverlayPetService : Service() {
         startForegroundNotification()
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
 
-        // 先用估算尺寸放好，等网页上报真实尺寸后再校正
-        compactW = dp(120)
-        compactH = dp(150)
+        petW = dp(110)
+        petH = dp(120)
+        winW = dp(130)
+        winH = dp(170)
         initPosition()
 
         webView = WebView(this).apply {
             setBackgroundColor(Color.TRANSPARENT)
             alpha = 0f
+            isFocusable = true
+            isFocusableInTouchMode = true
             with(settings) {
                 javaScriptEnabled = true
                 domStorageEnabled = true
@@ -77,16 +89,19 @@ class OverlayPetService : Service() {
                         "window.__screen && window.__screen(${screenW / density}, ${screenH / density})",
                         null
                     )
+                    sendPetPos()
                     showWhenReady()
                 }
             }
             loadUrl("file:///android_asset/overlay.html")
         }
+
         bridge.attach(webView)
         attachDragHandler()
+        attachTouchRegion()
 
         params = buildParams()
-        applyLayout()
+        applyRect(false)
     }
 
     private fun showWhenReady() {
@@ -97,17 +112,27 @@ class OverlayPetService : Service() {
         } catch (_: Exception) {
             return
         }
-        applyLayout()
+        applyRect(false)
+        sendLayout()
         webView.animate().alpha(1f).setDuration(160).start()
     }
 
     private fun initPosition() {
-        val maxX = (screenW - compactW).coerceAtLeast(0)
-        val maxY = (screenH - compactH).coerceAtLeast(0)
-        val sx = store.get(KEY_X, "").toIntOrNull()
-        val sy = store.get(KEY_Y, "").toIntOrNull()
-        posX = (sx ?: (maxX - dp(6))).coerceIn(0, maxX)
-        posY = (sy ?: (maxY - dp(90))).coerceIn(0, maxY)
+        val sx = store.get(KEY_X, "").toFloatOrNull()
+        val sy = store.get(KEY_Y, "").toFloatOrNull()
+        posX = (sx ?: (screenW - petW / 2f - dp(12))).toInt()
+        posY = (sy ?: (screenH - petH / 2f - dp(80))).toInt()
+        clampPet()
+    }
+
+    private fun clampPet() {
+        if (petW <= 0 || petH <= 0) return
+        val minX = petW / 2
+        val maxX = (screenW - petW / 2).coerceAtLeast(minX)
+        val minY = petH / 2
+        val maxY = (screenH - petH / 2).coerceAtLeast(minY)
+        posX = posX.coerceIn(minX, maxX)
+        posY = posY.coerceIn(minY, maxY)
     }
 
     private fun buildParams(): WindowManager.LayoutParams {
@@ -118,94 +143,96 @@ class OverlayPetService : Service() {
             WindowManager.LayoutParams.TYPE_PHONE
         }
         return WindowManager.LayoutParams(
-            compactW,
-            compactH,
+            winW,
+            winH,
             type,
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            baseFlags() or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = posX
-            y = posY
+            x = winX
+            y = winY
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
         }
     }
 
-    /**
-     * 窗口 = 内容大小。
-     * 展开时向右上生长，角色在屏幕上的位置保持不变；
-     * 窗口之外的地方不遮挡，可以正常点击。
-     */
-    private fun applyLayout() {
+    private fun baseFlags(): Int =
+        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+
+    private fun applyRect(notify: Boolean) {
         if (!added) return
-
-        val w: Int
-        val h: Int
-        if (expanded) {
-            w = if (expandedW > 0) expandedW else compactW
-            h = if (expandedH > 0) expandedH else compactH
+        if (winW <= 0 || winH <= 0) return
+        params.width = winW
+        params.height = winH
+        params.x = winX
+        params.y = winY
+        params.flags = if (focusable) {
+            baseFlags()
         } else {
-            w = compactW
-            h = compactH
+            baseFlags() or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
         }
-
-        var x = if (expanded) posX + compactW - w else posX
-        var y = if (expanded) posY + compactH - h else posY
-        x = x.coerceIn(0, (screenW - w).coerceAtLeast(0))
-        y = y.coerceIn(0, (screenH - h).coerceAtLeast(0))
-
-        params.width = w
-        params.height = h
-        params.x = x
-        params.y = y
-        params.flags = if (expanded) {
-            params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-        } else {
-            params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-        }
-
         try {
             wm.updateViewLayout(webView, params)
         } catch (_: Exception) {
         }
+        if (notify) {
+            sendLayout()
+            webView.requestLayout()
+        }
     }
 
-    /** 网页上报紧凑尺寸（CSS px） */
-    fun setCompactSize(w: Double, h: Double) {
-        val pw = (w * density).roundToInt().coerceAtLeast(dp(30))
-        val ph = (h * density).roundToInt().coerceAtLeast(dp(30))
-        if (pw == compactW && ph == compactH) return
-        compactW = pw
-        compactH = ph
-        if (!expanded) applyLayout()
+    private fun sendLayout() {
+        webView.evaluateJavascript(
+            "window.__layout && window.__layout(${winX / density}, ${winY / density})", null
+        )
     }
 
-    /** 网页上报展开尺寸（CSS px） */
-    fun setExpandedSize(w: Double, h: Double) {
-        val pw = (w * density).roundToInt().coerceAtLeast(dp(30))
-        val ph = (h * density).roundToInt().coerceAtLeast(dp(30))
-        val maxW = screenW
-        val maxH = screenH
-        val cw = pw.coerceAtMost(maxW)
-        val ch = ph.coerceAtMost(maxH)
-        if (cw == expandedW && ch == expandedH) return
-        expandedW = cw
-        expandedH = ch
-        if (expanded) applyLayout()
+    private fun sendPetPos() {
+        webView.evaluateJavascript(
+            "window.__petPos && window.__petPos(${posX / density}, ${posY / density})", null
+        )
     }
 
-    fun setExpanded(value: Boolean) {
-        if (expanded == value) return
-        expanded = value
-        applyLayout()
-        webView.evaluateJavascript("window.__setExpanded && window.__setExpanded($value)", null)
+    // ---------- 网页上报 ----------
+
+    fun setPetSize(w: Double, h: Double) {
+        val pw = (w * density).roundToInt().coerceAtLeast(dp(20))
+        val ph = (h * density).roundToInt().coerceAtLeast(dp(20))
+        if (pw == petW && ph == petH) return
+        petW = pw
+        petH = ph
+        clampPet()
+        sendPetPos()
     }
 
-    fun refresh() {
-        webView.evaluateJavascript("window.__applySettings && window.__applySettings()", null)
+    fun setWindowRect(x: Double, y: Double, w: Double, h: Double) {
+        val pw = (w * density).roundToInt().coerceIn(dp(30), screenW)
+        val ph = (h * density).roundToInt().coerceIn(dp(30), screenH)
+        val px = (x * density).roundToInt().coerceIn(0, (screenW - pw).coerceAtLeast(0))
+        val py = (y * density).roundToInt().coerceIn(0, (screenH - ph).coerceAtLeast(0))
+        if (pw == winW && ph == winH && px == winX && py == winY) return
+        winW = pw
+        winH = ph
+        winX = px
+        winY = py
+        applyRect(true)
+    }
+
+    fun setFocusable(value: Boolean) {
+        if (focusable == value) return
+        focusable = value
+        applyRect(false)
+        if (value) {
+            webView.requestFocus()
+        }
+    }
+
+    fun setTouchRects(rects: List<Rect>) {
+        touchRects = rects
+        webView.requestLayout()
+        webView.invalidate()
     }
 
     fun savePosition() {
@@ -213,20 +240,40 @@ class OverlayPetService : Service() {
         store.set(KEY_Y, posY.toString())
     }
 
+    fun refresh() {
+        webView.evaluateJavascript("window.__applySettings && window.__applySettings()", null)
+    }
+
     /**
-     * 原生拖拽。用 rawX/rawY（屏幕绝对坐标），不受窗口自身移动影响，所以不会抖。
-     * 返回 false，让 WebView 继续处理点击。
+     * 只有宠物/对话框/按钮/输入框那几块接收触摸，
+     * 窗口里的空白处直接穿透到桌面。
+     */
+    private fun attachTouchRegion() {
+        webView.viewTreeObserver.addOnComputeInternalInsetsListener { info ->
+            if (touchRects.isEmpty()) {
+                info.setTouchableInsets(ViewTreeObserver.InternalInsetsInfo.TOUCHABLE_INSETS_FRAME)
+            } else {
+                info.setTouchableInsets(ViewTreeObserver.InternalInsetsInfo.TOUCHABLE_INSETS_REGION)
+                val region = info.touchableRegion
+                region.setEmpty()
+                for (r in touchRects) region.union(r)
+            }
+        }
+    }
+
+    /**
+     * 原生拖拽：rawX/rawY 是屏幕绝对坐标，不受窗口移动影响，所以不会抖。
+     * 返回 false 让 WebView 继续处理点击。
      */
     private fun attachDragHandler() {
         val slop = dp(8)
         webView.setOnTouchListener { _, event ->
-            if (expanded) return@setOnTouchListener false
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     dragStartRawX = event.rawX
                     dragStartRawY = event.rawY
-                    dragStartX = posX
-                    dragStartY = posY
+                    dragStartPosX = posX
+                    dragStartPosY = posY
                     dragging = true
                     dragMoved = false
                 }
@@ -236,12 +283,15 @@ class OverlayPetService : Service() {
                         val dy = event.rawY - dragStartRawY
                         if (!dragMoved && (abs(dx) > slop || abs(dy) > slop)) dragMoved = true
                         if (dragMoved) {
-                            val maxX = (screenW - compactW).coerceAtLeast(0)
-                            val maxY = (screenH - compactH).coerceAtLeast(0)
-                            posX = (dragStartX + dx).roundToInt().coerceIn(0, maxX)
-                            posY = (dragStartY + dy).roundToInt().coerceIn(0, maxY)
-                            params.x = posX
-                            params.y = posY
+                            val oldX = posX
+                            val oldY = posY
+                            posX = (dragStartPosX + dx).roundToInt()
+                            posY = (dragStartPosY + dy).roundToInt()
+                            clampPet()
+                            winX += posX - oldX
+                            winY += posY - oldY
+                            params.x = winX
+                            params.y = winY
                             try {
                                 wm.updateViewLayout(webView, params)
                             } catch (_: Exception) {
@@ -252,6 +302,8 @@ class OverlayPetService : Service() {
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     if (dragging && dragMoved) {
                         savePosition()
+                        sendPetPos()
+                        sendLayout()
                         webView.evaluateJavascript(
                             "window.__suppressClick && window.__suppressClick()", null
                         )

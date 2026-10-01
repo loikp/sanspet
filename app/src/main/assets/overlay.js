@@ -19,7 +19,6 @@ const DEFAULT_PROMPT = [
   '回复长度：默认 1-2 句，用户要求解释时可以变长。'
 ].join('\n');
 
-/* 点击角色的随机回应：亲切一点 */
 const REACTIONS = [
   '嘿，你来了。',
   '……嗯，我在呢。',
@@ -33,7 +32,6 @@ const REACTIONS = [
   '嘿，先深呼吸一下。'
 ];
 
-/* 主动开口 */
 const PROACTIVE = [
   '……你已经很久没理我了。',
   '嘿，还在吗？',
@@ -43,13 +41,17 @@ const PROACTIVE = [
 ];
 
 let typing = false;
-let suppressClick = false;
 let skipTyping = false;
 let busy = false;
 let cbSeq = 0;
 let lastSpeak = 0;
+let suppressClick = false;
+
+/* 屏幕尺寸与宠物中心坐标（CSS px），由原生告知 */
 let screenW = 360;
 let screenH = 640;
+let petX = 0;
+let petY = 0;
 
 const history = { offset: 0, page: 20, done: false, loading: false };
 
@@ -116,31 +118,66 @@ function blip() {
   } catch (e) {}
 }
 
-/* ---------------- 缩放 ---------------- */
+/* ---------------- 与原生同步窗口 ---------------- */
+
+window.__petPos = function (x, y) { petX = x; petY = y; };
+
+/* 原生告诉我们窗口左上角在哪，据此把内容盒子摆到宠物中心 */
+window.__layout = function (wx, wy) {
+  const wrap = $('#petWrap');
+  const pet = $('#pet');
+  if (!wrap || !pet) return;
+  const pw = pet.offsetWidth || 0;
+  const ph = pet.offsetHeight || 0;
+  wrap.style.left = (petX - pw / 2 - wx) + 'px';
+  wrap.style.top = (petY - ph / 2 - wy) + 'px';
+  if (typeof wx === 'number') setTimeout(reportTouchRects, 0);
+};
+
+/* 内容盒子实际占多大，报给原生当作窗口大小 */
+function reportWindowRect() {
+  const wrap = $('#petWrap');
+  const pet = $('#pet');
+  if (!wrap || !pet) return;
+  const wr = wrap.getBoundingClientRect();
+  const pr = pet.getBoundingClientRect();
+  if (!pr.width || !wr.width) return;
+  const offX = pr.left - wr.left;
+  const offY = pr.top - wr.top;
+  const left = petX - pr.width / 2;
+  const top = petY - pr.height / 2;
+  try { B.setPetSize(pr.width, pr.height); } catch (e) {}
+  try { B.setWindowRect(left - offX, top - offY, wr.width, wr.height); } catch (e) {}
+  setTimeout(reportTouchRects, 0);
+}
+
+/* 只有宠物、对话框、按钮、输入条这些地方接收触摸，空白处穿透到桌面 */
+function reportTouchRects() {
+  const ids = ['pet', 'petButtons', 'dialog', 'chatBar', 'historyPanel'];
+  const rects = [];
+  ids.forEach(function (id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (el.classList.contains('hidden')) return;
+    if (el.offsetWidth === 0 || el.offsetHeight === 0) return;
+    const r = el.getBoundingClientRect();
+    rects.push({ l: r.left, t: r.top, r: r.right, b: r.bottom });
+  });
+  try { B.setTouchRects(JSON.stringify(rects)); } catch (e) {}
+}
+
+function reportSoon() { requestAnimationFrame(function () { reportWindowRect(); }); }
 
 function applyPetScale() {
   const s = parseFloat(S('petScale', '1')) || 1;
   document.documentElement.style.setProperty('--pet-scale', String(s));
-  setTimeout(reportCompactSize, 80);
+  setTimeout(reportWindowRect, 80);
 }
 
-/* ---------------- 上报尺寸给原生 ---------------- */
-
-function reportCompactSize() {
-  const pet = $('#pet');
-  const btns = $('#petButtons');
-  if (!pet || !btns) return;
-  const w = Math.max(pet.offsetWidth, btns.offsetWidth) + 8;
-  const h = pet.offsetHeight + 6 + btns.offsetHeight + 8;
-  try { B.setCompactSize(w, h); } catch (e) {}
-}
-
-function reportExpandedSize() {
-  const wrap = $('#petWrap');
-  if (!wrap) return;
-  const w = wrap.offsetWidth + 4;
-  const h = wrap.offsetHeight + 4;
-  try { B.setExpandedSize(w, h); } catch (e) {}
+/* 历史面板要占满屏幕才放得下 */
+function useFullScreenWindow() {
+  try { B.setWindowRect(0, 0, screenW, screenH); } catch (e) {}
+  setTimeout(reportTouchRects, 60);
 }
 
 /* ---------------- 模式 ---------------- */
@@ -149,37 +186,41 @@ function applyMode(expanded) {
   document.body.classList.toggle('expanded', expanded);
   document.body.classList.toggle('compact', !expanded);
   if (!expanded) {
-    $('#chatBar').classList.add('hidden');
     $('#historyPanel').classList.add('hidden');
     $('#dialog').classList.add('hidden');
-    $('#dialog').classList.remove('has-input');
-    requestAnimationFrame(reportCompactSize);
+    $('#chatBar').classList.add('hidden');
+    try { B.setFocusable(false); } catch (e) {}
+    setTimeout(reportWindowRect, 40);
   }
 }
 
 function setMode(expanded) {
   applyMode(expanded);
-  try { B.setExpanded(expanded); } catch (e) {}
-  if (expanded) requestAnimationFrame(reportExpandedSize);
+  try { B.setFocusable(expanded); } catch (e) {}
+  if (expanded) setTimeout(reportWindowRect, 40);
 }
 
-/* 原生调整完窗口后调用 */
 window.__setExpanded = function (v) { applyMode(!!v); };
+
+window.__screen = function (w, h) {
+  screenW = w;
+  screenH = h;
+  document.documentElement.style.setProperty('--screen-w', w + 'px');
+  document.documentElement.style.setProperty('--screen-h', h + 'px');
+  document.documentElement.style.setProperty('--dialog-max-h', Math.round(h * 0.55) + 'px');
+  applyPetScale();
+  setTimeout(reportWindowRect, 60);
+};
+
+window.__applySettings = function () {
+  applyPetScale();
+  setTimeout(reportWindowRect, 120);
+};
 
 /* 原生拖拽结束后调用，避免误触发点击 */
 window.__suppressClick = function () {
   suppressClick = true;
   setTimeout(function () { suppressClick = false; }, 400);
-};
-
-/* 原生把屏幕尺寸（CSS px）传进来 */
-window.__screen = function (w, h) {
-  screenW = w;
-  screenH = h;
-  document.documentElement.style.setProperty('--dialog-max', Math.min(w * 0.92, 520) + 'px');
-  document.documentElement.style.setProperty('--dialog-max-h', Math.round(h * 0.5) + 'px');
-  applyPetScale();
-  reportCompactSize();
 };
 
 /* ---------------- 对话框 ---------------- */
@@ -194,6 +235,7 @@ function showDialog(text, opts) {
   skipTyping = false;
   lastSpeak = Date.now();
   if (opts.expand !== false) setMode(true);
+  reportSoon();
 
   const speed = parseInt(S('typeSpeed', '45'), 10) || 45;
   let i = 0;
@@ -203,23 +245,22 @@ function showDialog(text, opts) {
     if (skipTyping) {
       el.textContent = text;
       typing = false;
-      requestAnimationFrame(reportExpandedSize);
+      reportSoon();
       return;
     }
     i++;
     el.textContent = text.slice(0, i);
     const ch = text.charAt(i - 1);
     if (ch && ch.trim() !== '') blip();
+    if (i % 4 === 0) reportSoon();
     if (i < text.length) {
       setTimeout(tick, speed);
     } else {
       typing = false;
-      requestAnimationFrame(reportExpandedSize);
+      reportSoon();
     }
-    if (i % 6 === 0) requestAnimationFrame(reportExpandedSize);
   }
   tick();
-  requestAnimationFrame(reportExpandedSize);
 }
 
 function onClickDialog() {
@@ -227,6 +268,7 @@ function onClickDialog() {
     skipTyping = true;
   } else {
     $('#dialog').classList.add('hidden');
+    $('#chatBar').classList.add('hidden');
     setMode(false);
   }
 }
@@ -286,10 +328,9 @@ function loadMoreHistory() {
     list.forEach(function (m) { box.appendChild(historyItem(m)); });
   }
   history.offset += list.length;
-  if (list.length < history.page) {
-    history.done = true;
-  }
+  if (list.length < history.page) history.done = true;
   history.loading = false;
+  setTimeout(reportTouchRects, 0);
 }
 
 function openHistory() {
@@ -302,7 +343,7 @@ function openHistory() {
     history.done = false;
     loadMoreHistory();
   }
-  requestAnimationFrame(reportExpandedSize);
+  useFullScreenWindow();
 }
 
 function closeHistory() {
@@ -349,7 +390,7 @@ function sendMessage() {
   if (!text || busy) return;
   input.value = '';
   addHistory('user', text);
-  showDialog('...', { expand: true });
+  showDialog('...');
   busy = true;
 
   const cbId = 'cb' + (++cbSeq);
@@ -391,29 +432,25 @@ document.addEventListener('mousedown', function () { initAudio(); }, { once: tru
 $('#pet').addEventListener('click', function () {
   if (suppressClick) return;
   initAudio();
-  showDialog(pick(REACTIONS), { expand: true });
+  showDialog(pick(REACTIONS));
 });
 
 $('#dialog').addEventListener('click', onClickDialog);
+$('#chatBar').addEventListener('click', function (e) { e.stopPropagation(); });
 
 $('#btnChat').addEventListener('click', function () {
   initAudio();
   setMode(true);
   $('#historyPanel').classList.add('hidden');
   $('#dialog').classList.remove('hidden');
-  $('#dialog').classList.add('has-input');
   $('#chatBar').classList.remove('hidden');
   const dt = $('#dialogText');
   if (!dt.textContent.trim()) dt.textContent = '……说吧，我听着。';
-  requestAnimationFrame(reportExpandedSize);
   setTimeout(function () {
-    reportExpandedSize();
+    reportWindowRect();
     $('#chatInput').focus();
-  }, 220);
+  }, 200);
 });
-
-/* 点输入框不要把对话框关掉 */
-$('#chatBar').addEventListener('click', function (e) { e.stopPropagation(); });
 
 $('#btnSend').addEventListener('click', sendMessage);
 $('#chatInput').addEventListener('keydown', function (e) {
@@ -430,15 +467,10 @@ $('#historyList').addEventListener('scroll', function () {
 
 setInterval(proactiveTick, 45000);
 
-/* 启动 */
-initAudio();
-applyPetScale();
-window.__applySettings = function () {
-  applyPetScale();
-  setTimeout(reportCompactSize, 120);
-};
-
+window.addEventListener('resize', function () { reportSoon(); });
 window.addEventListener('load', function () {
-  reportCompactSize();
-  setTimeout(reportCompactSize, 300);
+  initAudio();
+  applyPetScale();
+  reportSoon();
+  setTimeout(reportSoon, 300);
 });

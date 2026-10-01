@@ -2,6 +2,7 @@ package com.sanspet.app
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -17,6 +18,7 @@ import java.io.OutputStreamWriter
 import java.lang.ref.WeakReference
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlin.math.roundToInt
 
 /**
  * WebView 与原生之间的桥。
@@ -76,13 +78,38 @@ class PetBridge(
     }
 
     @JavascriptInterface
-    fun setCompactSize(w: Double, h: Double) {
-        main.post { overlay?.setCompactSize(w, h) }
+    fun setPetSize(w: Double, h: Double) {
+        main.post { overlay?.setPetSize(w, h) }
     }
 
     @JavascriptInterface
-    fun setExpandedSize(w: Double, h: Double) {
-        main.post { overlay?.setExpandedSize(w, h) }
+    fun setWindowRect(x: Double, y: Double, w: Double, h: Double) {
+        main.post { overlay?.setWindowRect(x, y, w, h) }
+    }
+
+    @JavascriptInterface
+    fun setFocusable(value: Boolean) {
+        main.post { overlay?.setFocusable(value) }
+    }
+
+    /** 网页报上来的可触摸区域，空白处穿透到桌面 */
+    @JavascriptInterface
+    fun setTouchRects(json: String?) {
+        val list = ArrayList<Rect>()
+        try {
+            val arr = JSONArray(json ?: "[]")
+            val d = context.resources.displayMetrics.density
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val l = (o.optDouble("l") * d).roundToInt()
+                val t = (o.optDouble("t") * d).roundToInt()
+                val r = (o.optDouble("r") * d).roundToInt()
+                val b = (o.optDouble("b") * d).roundToInt()
+                if (r > l && b > t) list.add(Rect(l, t, r, b))
+            }
+        } catch (_: Exception) {
+        }
+        main.post { overlay?.setTouchRects(list) }
     }
 
     @JavascriptInterface
