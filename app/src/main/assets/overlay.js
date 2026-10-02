@@ -412,6 +412,7 @@ function sendMessage() {
   if (!text || busy) return;
   input.value = '';
   addHistory('user', text);
+  dialogQueue = [];
   showDialog('...');
   busy = true;
 
@@ -457,12 +458,22 @@ let lastTapAt = 0;
 
 $('#pet').addEventListener('click', function () {
   if (suppressClick) return;
-  // 说话中或正在等回复时不接受戳
+
+  // 正在打字 / 正在等回复：不响应
   if (typing || busy) return;
+
+  // 还有没说完的句子：点一下显示下一句
+  if (dialogQueue.length > 0) {
+    showNextSegment();
+    return;
+  }
+
+  // 全部说完了，才允许「戳一戳刷新对话」（一秒最多 2 次）
   const now = Date.now();
   if (now - lastTapAt < 500) return;
   lastTapAt = now;
   initAudio();
+
   if (!$('#historyPanel').classList.contains('hidden')) {
     closeHistory();
     return;
