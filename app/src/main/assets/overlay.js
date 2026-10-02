@@ -121,9 +121,11 @@ function reportAnchor() {
   const pet = $('#pet');
   if (!pet || !pet.offsetWidth) return;
   // 用 offset* 而不是 getBoundingClientRect：
-  // 后者会把「上下浮动」的动画位移算进去，导致锚点抖动、宠物被带着微移
+  // 后者会把「上下浮动」的动画位移算进去，导致锚点抖动、宠物被带着微移。
+  // 纵坐标按「距窗口底边」算，这样窗口长高时宠物不会跟着跑。
+  const winH = document.documentElement.clientHeight || 600;
   const ax = pet.offsetLeft + pet.offsetWidth / 2;
-  const ay = pet.offsetTop + pet.offsetHeight / 2;
+  const ay = winH - (pet.offsetTop + pet.offsetHeight / 2);
   try { B.setAnchor(ax, ay); } catch (e) {}
 }
 
@@ -142,7 +144,23 @@ function reportTouchRects() {
   try { B.setTouchRects(JSON.stringify(rects)); } catch (e) {}
 }
 
-function refresh() { reportAnchor(); reportTouchRects(); }
+function refresh() {
+  const pet = $('#pet');
+  const petH = pet && pet.offsetHeight ? pet.offsetHeight : 150;
+  const petW = pet && pet.offsetWidth ? pet.offsetWidth : 110;
+
+  // 对话框就贴在宠物正上方（跟着宠物高度走，不会留大片空隙）
+  const dlg = $('#dialog');
+  if (dlg) dlg.style.bottom = Math.round(petH + 98 + 8) + 'px';
+
+  // 窗口尺寸 = 刚好装下所有槽位（只在尺寸真的变了的时候才会生效）
+  const winW = Math.max(264, Math.round(petW) + 20);
+  const winH = Math.round(petH + 98 + 8 + 130 + 10);
+  try { B.setWindowSize(winW, winH); } catch (e) {}
+
+  reportAnchor();
+  reportTouchRects();
+}
 
 function applyPetScale() {
   const s = parseFloat(S('petScale', '1')) || 1;
@@ -255,6 +273,7 @@ function showNextSegment() {
 }
 
 function onClickDialog() {
+  // 点对话框 = 直接显示完整这一句（不打断，只是加速）
   if (typing) {
     skipTyping = true;
     return;
@@ -433,6 +452,8 @@ let lastTapAt = 0;
 
 $('#pet').addEventListener('click', function () {
   if (suppressClick) return;
+  // 说话中或正在等回复时不接受戳
+  if (typing || busy) return;
   const now = Date.now();
   if (now - lastTapAt < 500) return;
   lastTapAt = now;

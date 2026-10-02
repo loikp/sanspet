@@ -37,6 +37,7 @@
 
     setExpanded: () => {},
     setAnchor: () => {},
+    setWindowSize: () => {},
     setCentered: () => {},
     setFocusable: () => {},
     setTouchRects: () => {},

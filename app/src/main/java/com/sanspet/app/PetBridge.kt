@@ -83,6 +83,11 @@ class PetBridge(
     }
 
     @JavascriptInterface
+    fun setWindowSize(w: Double, h: Double) {
+        main.post { overlay?.setWindowSize(w, h) }
+    }
+
+    @JavascriptInterface
     fun setCentered(value: Boolean) {
         main.post { overlay?.setCentered(value) }
     }

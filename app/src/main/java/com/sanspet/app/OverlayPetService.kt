@@ -43,9 +43,9 @@ class OverlayPetService : Service() {
     private var winW = 0
     private var winH = 0
 
-    /** 宠物中心相对窗口左上角的偏移（像素），由网页测量后上报 */
+    /** 宠物中心相对窗口的锚点（像素）：X 距左边，Y 距底边。由网页测量后上报 */
     private var anchorX = 0
-    private var anchorY = 0
+    private var anchorBottom = 0
 
     /** 宠物中心在屏幕上的坐标（像素）—— 拖拽基准 */
     private var posX = 0
@@ -73,13 +73,13 @@ class OverlayPetService : Service() {
         startForegroundNotification()
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
 
-        // 固定尺寸，只算这一次
-        winW = minOf(screenW - dp(12), dp(320)).coerceAtLeast(dp(200))
-        winH = minOf(screenH - dp(60), dp(600)).coerceAtLeast(dp(300))
+        // 默认尺寸，网页量好宠物高度后会重新上报（只在尺寸变化时调整，不是每帧）
+        winW = minOf(screenW - dp(12), dp(264)).coerceAtLeast(dp(200))
+        winH = minOf(screenH - dp(60), dp(400)).coerceAtLeast(dp(280))
 
         // 先用估算的锚点，等网页上报真实值后校正
         anchorX = winW / 2
-        anchorY = winH - dp(98) - dp(130)
+        anchorBottom = dp(173)
 
         initPosition()
 
@@ -138,7 +138,7 @@ class OverlayPetService : Service() {
     /** 只保证宠物本身留在屏幕内；窗口可以超出屏幕 */
     private fun clampPet() {
         posX = posX.coerceIn(dp(30), (screenW - dp(30)).coerceAtLeast(dp(30)))
-        posY = posY.coerceIn(dp(30), (screenH - dp(30)).coerceAtLeast(dp(30)))
+        posY = posY.coerceIn(dp(60), (screenH - dp(40)).coerceAtLeast(dp(60)))
     }
 
     private fun buildParams(): WindowManager.LayoutParams {
@@ -173,7 +173,8 @@ class OverlayPetService : Service() {
             params.y = (screenH - winH) / 2
         } else {
             params.x = posX - anchorX
-            params.y = posY - anchorY
+            // 纵坐标按「距底边」算：窗口变高时向上生长，宠物在屏幕上不动
+            params.y = posY - winH + anchorBottom
         }
         params.flags = if (focusable) {
             baseFlags()
@@ -191,10 +192,22 @@ class OverlayPetService : Service() {
     /** 宠物中心相对窗口的偏移，网页量好后只上报一次（或缩放变化时） */
     fun setAnchor(x: Double, y: Double) {
         val ax = (x * density).roundToInt()
-        val ay = (y * density).roundToInt()
-        if (ax == anchorX && ay == anchorY) return
+        val ab = (y * density).roundToInt().coerceAtLeast(1)
+        if (ax == anchorX && ab == anchorBottom) return
         anchorX = ax
-        anchorY = ay
+        anchorBottom = ab
+        applyPosition()
+    }
+
+    /** 窗口尺寸跟着宠物高度走，只在用户改大小时触发，不是每帧 */
+    fun setWindowSize(w: Double, h: Double) {
+        val pw = (w * density).roundToInt().coerceIn(dp(160), screenW)
+        val ph = (h * density).roundToInt().coerceIn(dp(200), screenH)
+        if (pw == winW && ph == winH) return
+        winW = pw
+        winH = ph
+        params.width = winW
+        params.height = winH
         applyPosition()
     }
 

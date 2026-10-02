@@ -19,7 +19,6 @@ html, body.overlay {
   margin: 0 auto;
   bottom: 98px;
   width: calc(110px * var(--pet-scale, 1));
-  max-height: 260px;
   object-fit: contain;
   image-rendering: pixelated;
   animation: idle 2.6s ease-in-out infinite;
@@ -59,7 +58,7 @@ html, body.overlay {
   align-items: flex-start;
   gap: 8px;
   width: 250px;
-  max-height: 180px;
+  max-height: 130px;
   overflow-y: auto;
   cursor: pointer;
   text-align: left;
