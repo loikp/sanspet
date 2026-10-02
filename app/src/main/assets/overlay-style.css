@@ -1,3 +1,6 @@
+/* 固定窗口布局：窗口尺寸永远不变，所有元素按固定槽位绝对定位。
+   宠物中心就是拖拽基准点。 */
+
 html, body.overlay {
   width: 100%;
   height: 100%;
@@ -7,23 +10,16 @@ html, body.overlay {
 
 #stage { position: relative; width: 100%; height: 100%; }
 
-/* 只是个坐标系，不参与布局；子元素全部绝对定位，各自算各自的位置 */
-#petWrap {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 0;
-  height: 0;
-  z-index: 60;
-}
+/* ---------------- 宠物：底部往上数第三个槽位 ---------------- */
 
 #pet {
   position: absolute;
   left: 0;
-  top: 0;
+  right: 0;
+  margin: 0 auto;
+  bottom: 98px;
   width: calc(110px * var(--pet-scale, 1));
-  height: auto;
-  max-height: calc(130px * var(--pet-scale, 1));
+  max-height: 150px;
   object-fit: contain;
   image-rendering: pixelated;
   animation: idle 2.6s ease-in-out infinite;
@@ -38,25 +34,32 @@ html, body.overlay {
   50% { transform: translateY(-6px) scale(1.03); }
 }
 
+/* ---------------- 按钮：宠物正下方居中 ---------------- */
+
 #petButtons {
   position: absolute;
   left: 0;
-  top: 0;
+  right: 0;
+  margin: 0 auto;
+  bottom: 58px;
+  width: max-content;
   display: flex;
   gap: 5px;
 }
 
-/* ---------------- 对话框 ---------------- */
+/* ---------------- 对话框：宠物正上方 ---------------- */
 
 #dialog {
   position: absolute;
   left: 0;
-  top: 0;
+  right: 0;
+  margin: 0 auto;
+  bottom: 254px;
   display: flex;
   align-items: flex-start;
   gap: 8px;
   width: 250px;
-  max-height: var(--dialog-max-h, 320px);
+  max-height: 170px;
   overflow-y: auto;
   cursor: pointer;
   text-align: left;
@@ -90,15 +93,15 @@ html, body.overlay {
   margin-top: 6px;
 }
 
-/* ---------------- 输入条（独立一格） ---------------- */
+/* ---------------- 输入条：窗口底部 ---------------- */
 
 #chatBar {
   position: absolute;
-  left: 0;
-  top: 0;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
   display: flex;
   gap: 6px;
-  width: 250px;
 }
 
 #chatInput {
@@ -115,15 +118,14 @@ html, body.overlay {
 }
 #chatInput::placeholder { color: #888; }
 
-/* ---------------- 历史：接近手机宽度、够大，层级最高 ---------------- */
+/* ---------------- 历史：铺满窗口，位置固定 ---------------- */
 
 #historyPanel {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: calc(var(--screen-w, 360px) * 0.94);
-  height: calc(var(--screen-h, 640px) * 0.82);
+  left: 6px;
+  right: 6px;
+  top: 6px;
+  bottom: 6px;
   background: var(--black);
   border: 3px solid var(--white);
   display: flex;

@@ -78,13 +78,8 @@ class PetBridge(
     }
 
     @JavascriptInterface
-    fun setPetSize(w: Double, h: Double) {
-        main.post { overlay?.setPetSize(w, h) }
-    }
-
-    @JavascriptInterface
-    fun setWindowRect(x: Double, y: Double, w: Double, h: Double) {
-        main.post { overlay?.setWindowRect(x, y, w, h) }
+    fun setAnchor(x: Double, y: Double) {
+        main.post { overlay?.setAnchor(x, y) }
     }
 
     @JavascriptInterface

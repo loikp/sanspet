@@ -1,4 +1,4 @@
-/* SansPet 悬浮桌宠逻辑 */
+/* SansPet 悬浮桌宠逻辑（固定窗口版） */
 
 const $ = (s) => document.querySelector(s);
 
@@ -19,6 +19,7 @@ const DEFAULT_PROMPT = [
   '回复长度：默认 1-2 句，用户要求解释时可以变长。'
 ].join('\n');
 
+/* 点击角色的随机回应 */
 const REACTIONS = [
   '嘿，你来了。',
   '……嗯，我在呢。',
@@ -46,15 +47,9 @@ let busy = false;
 let cbSeq = 0;
 let lastSpeak = 0;
 let suppressClick = false;
-
-/* 屏幕尺寸与宠物中心坐标（CSS px），由原生告知 */
-let screenW = 360;
-let screenH = 640;
-let petX = 0;
-let petY = 0;
+let historyOpen = false;
 
 const history = { offset: 0, page: 20, done: false, loading: false };
-let historyOpen = false;
 
 function S(key, def) { try { return B.getSetting(key, String(def)); } catch (e) { return String(def); } }
 function SS(key, val) { try { B.setSetting(key, String(val)); } catch (e) {} }
@@ -119,151 +114,47 @@ function blip() {
   } catch (e) {}
 }
 
-/* ---------------- 与原生同步窗口 ---------------- */
+/* ---------------- 上报给原生（只在需要时，绝不循环） ---------------- */
 
-window.__petPos = function (x, y) { petX = x; petY = y; };
-
-/* 每个元素各自绝对定位，窗口取它们的并集。
-   宠物永远钉死在 (petX, petY)，对话框只做屏幕内夹取，绝不推着宠物走。 */
-const PAD = 6;
-let lastBoxes = null;
-let lastWinX = 0;
-let lastWinY = 0;
-
-function clamp(v, lo, hi) { return Math.max(lo, Math.min(v, hi)); }
-
-function placeBoxes(boxes, wx, wy) {
-  boxes.forEach(function (b) {
-    b.el.style.left = Math.round(b.x - wx) + 'px';
-    b.el.style.top = Math.round(b.y - wy) + 'px';
-  });
-}
-
-function layout() {
-  if (historyOpen) {
-    requestResize(0, 0, Math.round(screenW), Math.round(screenH));
-    setTimeout(reportTouchRects, 40);
-    return;
-  }
-
+/* 宠物中心相对窗口左上角的偏移 —— 这就是拖拽基准点 */
+function reportAnchor() {
   const pet = $('#pet');
-  const btns = $('#petButtons');
-  const dlg = $('#dialog');
-  const chat = $('#chatBar');
-  if (!pet) return;
+  if (!pet || !pet.offsetWidth) return;
+  const r = pet.getBoundingClientRect();
+  try { B.setAnchor(r.left + r.width / 2, r.top + r.height / 2); } catch (e) {}
+}
 
-  const petW = pet.offsetWidth || 110;
-  const petH = pet.offsetHeight || 110;
-  const petLeft = petX - petW / 2;
-  const petTop = petY - petH / 2;
-
-  try { B.setPetSize(petW, petH); } catch (e) {}
-
-  const boxes = [{ el: pet, x: petLeft, y: petTop, w: petW, h: petH }];
-
-  const btnW = btns ? (btns.offsetWidth || 0) : 0;
-  const btnH = btns ? (btns.offsetHeight || 0) : 0;
-  const btnTop = petTop + petH + 6;
-  if (btnW && btnH) {
-    boxes.push({ el: btns, x: petX - btnW / 2, y: btnTop, w: btnW, h: btnH });
-  }
-
-  if (dlg && !dlg.classList.contains('hidden')) {
-    const dW = dlg.offsetWidth || 250;
-    const dH = dlg.offsetHeight || 60;
-    const dx = clamp(petX - dW / 2, PAD, Math.max(PAD, screenW - dW - PAD));
-    const dy = Math.max(PAD, petTop - 8 - dH);
-    boxes.push({ el: dlg, x: dx, y: dy, w: dW, h: dH });
-  }
-
-  if (chat && !chat.classList.contains('hidden')) {
-    const cW = chat.offsetWidth || 250;
-    const cH = chat.offsetHeight || 44;
-    const cx = clamp(petX - cW / 2, PAD, Math.max(PAD, screenW - cW - PAD));
-    const cy = btnTop + btnH + 8;
-    boxes.push({ el: chat, x: cx, y: cy, w: cW, h: cH });
-  }
-
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  boxes.forEach(function (b) {
-    minX = Math.min(minX, b.x);
-    minY = Math.min(minY, b.y);
-    maxX = Math.max(maxX, b.x + b.w);
-    maxY = Math.max(maxY, b.y + b.h);
+/* 只有这些方块接收触摸，窗口里的空白处穿透到桌面 */
+function reportTouchRects() {
+  const ids = ['pet', 'petButtons', 'dialog', 'chatBar', 'historyPanel'];
+  const rects = [];
+  ids.forEach(function (id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (el.classList.contains('hidden')) return;
+    if (!el.offsetWidth || !el.offsetHeight) return;
+    const r = el.getBoundingClientRect();
+    rects.push({ l: r.left, t: r.top, r: r.right, b: r.bottom });
   });
-  if (!isFinite(minX)) return;
-
-  let wx = Math.floor(minX - PAD);
-  let wy = Math.floor(minY - PAD);
-  let ww = Math.ceil(maxX - minX + PAD * 2);
-  let wh = Math.ceil(maxY - minY + PAD * 2);
-  ww = Math.min(ww, Math.round(screenW));
-  wh = Math.min(wh, Math.round(screenH));
-  wx = clamp(wx, 0, Math.max(0, Math.round(screenW) - ww));
-  wy = clamp(wy, 0, Math.max(0, Math.round(screenH) - wh));
-
-  lastBoxes = boxes;
-  lastWinX = wx;
-  lastWinY = wy;
-  placeBoxes(boxes, wx, wy);
-
-  requestResize(wx, wy, ww, wh);
-  setTimeout(reportTouchRects, 0);
+  try { B.setTouchRects(JSON.stringify(rects)); } catch (e) {}
 }
 
-/* 原生最终窗口位置（可能被夹过）回报后，再摆一次 */
-window.__layout = function (wx, wy) {
-  if (typeof wx !== 'number') return;
-  // 原生没有夹取窗口时不用再动，避免多余往返
-  if (Math.abs(wx - lastWinX) < 1 && Math.abs(wy - lastWinY) < 1) return;
-  lastWinX = wx;
-  lastWinY = wy;
-  if (lastBoxes) placeBoxes(lastBoxes, wx, wy);
-  setTimeout(reportTouchRects, 0);
-};
-
-/* 窗口尺寸只做有限次调整：节流 + 变化阈值 + 熔断，杜绝 resize 死循环 */
-let lastRect = null;
-let resizeBudget = 12;
-let budgetResetAt = 0;
-let layoutTimer = null;
-
-function scheduleLayout() {
-  if (layoutTimer) return;
-  layoutTimer = setTimeout(function () { layoutTimer = null; layout(); }, 130);
-}
-
-function requestResize(wx, wy, ww, wh) {
-  const now = Date.now();
-  if (now > budgetResetAt) {
-    budgetResetAt = now + 4000;
-    resizeBudget = 12;
-  }
-  if (lastRect) {
-    const delta = Math.abs(lastRect[0] - wx) + Math.abs(lastRect[1] - wy) +
-                  Math.abs(lastRect[2] - ww) + Math.abs(lastRect[3] - wh);
-    if (delta < 6) return;
-  }
-  if (resizeBudget <= 0) return;
-  resizeBudget--;
-  lastRect = [wx, wy, ww, wh];
-  try { B.setWindowRect(wx, wy, ww, wh); } catch (e) {}
-}
-
-function reportWindowRect() { scheduleLayout(); }
-function reportSoon() { scheduleLayout(); }
+function refresh() { reportAnchor(); reportTouchRects(); }
 
 function applyPetScale() {
   const s = parseFloat(S('petScale', '1')) || 1;
-  document.documentElement.style.setProperty('--pet-scale', String(s));
-  setTimeout(reportWindowRect, 80);
+  document.documentElement.style.setProperty('--pet-scale', String(Math.min(s, 1.4)));
+  setTimeout(refresh, 60);
 }
 
-/* 历史面板要占满屏幕才放得下 */
-function useFullScreenWindow() {
-  try { B.setWindowRect(0, 0, screenW, screenH); } catch (e) {}
-  setTimeout(reportTouchRects, 60);
-}
+window.__applySettings = function () { applyPetScale(); };
+window.__screen = function () { setTimeout(refresh, 60); };
+window.__petPos = function () {};
+
+window.__suppressClick = function () {
+  suppressClick = true;
+  setTimeout(function () { suppressClick = false; }, 400);
+};
 
 /* ---------------- 模式 ---------------- */
 
@@ -275,38 +166,14 @@ function applyMode(expanded) {
     $('#dialog').classList.add('hidden');
     $('#chatBar').classList.add('hidden');
     try { B.setFocusable(false); } catch (e) {}
-    setTimeout(reportWindowRect, 40);
   }
+  setTimeout(refresh, 40);
 }
 
 function setMode(expanded) {
   applyMode(expanded);
   try { B.setFocusable(expanded); } catch (e) {}
-  if (expanded) setTimeout(reportWindowRect, 40);
 }
-
-window.__setExpanded = function (v) { applyMode(!!v); };
-
-window.__screen = function (w, h) {
-  screenW = w;
-  screenH = h;
-  document.documentElement.style.setProperty('--screen-w', w + 'px');
-  document.documentElement.style.setProperty('--screen-h', h + 'px');
-  document.documentElement.style.setProperty('--dialog-max-h', Math.round(h * 0.55) + 'px');
-  applyPetScale();
-  setTimeout(reportWindowRect, 60);
-};
-
-window.__applySettings = function () {
-  applyPetScale();
-  setTimeout(reportWindowRect, 120);
-};
-
-/* 原生拖拽结束后调用，避免误触发点击 */
-window.__suppressClick = function () {
-  suppressClick = true;
-  setTimeout(function () { suppressClick = false; }, 400);
-};
 
 /* ---------------- 对话框 ---------------- */
 
@@ -320,7 +187,7 @@ function showDialog(text, opts) {
   skipTyping = false;
   lastSpeak = Date.now();
   if (opts.expand !== false) setMode(true);
-  reportSoon();
+  setTimeout(reportTouchRects, 40);
 
   const speed = parseInt(S('typeSpeed', '45'), 10) || 45;
   let i = 0;
@@ -330,20 +197,14 @@ function showDialog(text, opts) {
     if (skipTyping) {
       el.textContent = text;
       typing = false;
-      reportSoon();
       return;
     }
     i++;
     el.textContent = text.slice(0, i);
     const ch = text.charAt(i - 1);
     if (ch && ch.trim() !== '') blip();
-    if (i % 4 === 0) reportSoon();
-    if (i < text.length) {
-      setTimeout(tick, speed);
-    } else {
-      typing = false;
-      reportSoon();
-    }
+    if (i < text.length) setTimeout(tick, speed);
+    else typing = false;
   }
   tick();
 }
@@ -415,7 +276,6 @@ function loadMoreHistory() {
   history.offset += list.length;
   if (list.length < history.page) history.done = true;
   history.loading = false;
-  setTimeout(reportTouchRects, 0);
 }
 
 function openHistory() {
@@ -429,14 +289,13 @@ function openHistory() {
     history.done = false;
     loadMoreHistory();
   }
-  useFullScreenWindow();
+  setTimeout(reportTouchRects, 40);
 }
 
 function closeHistory() {
   historyOpen = false;
   $('#historyPanel').classList.add('hidden');
   setMode(false);
-  setTimeout(reportWindowRect, 40);
 }
 
 /* ---------------- 聊天 ---------------- */
@@ -507,6 +366,7 @@ window.__sansCallback = function (id, resultJson) {
 function proactiveTick() {
   if (S('proactive', '1') !== '1') return;
   if (busy || typing) return;
+  if (historyOpen) return;
   if (Date.now() - lastSpeak < 3 * 60 * 1000) return;
   const rate = parseFloat(S('proactiveRate', '0.08')) || 0;
   if (Math.random() < rate) showDialog(pick(PROACTIVE));
@@ -539,7 +399,7 @@ $('#btnChat').addEventListener('click', function () {
   const dt = $('#dialogText');
   if (!dt.textContent.trim()) dt.textContent = '……说吧，我听着。';
   setTimeout(function () {
-    reportWindowRect();
+    reportTouchRects();
     $('#chatInput').focus();
   }, 200);
 });
@@ -559,6 +419,8 @@ setInterval(proactiveTick, 45000);
 window.addEventListener('load', function () {
   initAudio();
   applyPetScale();
-  reportSoon();
-  setTimeout(reportSoon, 300);
+  setTimeout(refresh, 100);
+  setTimeout(refresh, 400);
 });
+
+$('#pet').addEventListener('load', function () { setTimeout(refresh, 60); });
