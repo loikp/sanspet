@@ -69,16 +69,17 @@ class OverlayPetService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
         startForegroundNotification()
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
 
         // 固定尺寸，只算这一次
         winW = minOf(screenW - dp(12), dp(320)).coerceAtLeast(dp(200))
-        winH = minOf(screenH - dp(140), dp(440)).coerceAtLeast(dp(260))
+        winH = minOf(screenH - dp(60), dp(600)).coerceAtLeast(dp(300))
 
         // 先用估算的锚点，等网页上报真实值后校正
         anchorX = winW / 2
-        anchorY = winH - dp(98) - dp(55)
+        anchorY = winH - dp(98) - dp(130)
 
         initPosition()
 
@@ -352,6 +353,7 @@ class OverlayPetService : Service() {
     }
 
     override fun onDestroy() {
+        isRunning = false
         savePosition()
         try {
             if (added) wm.removeView(webView)
@@ -363,6 +365,10 @@ class OverlayPetService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
+        /** 桌宠是否正在运行，设置页用它决定按钮显示「开启」还是「关闭」 */
+        @Volatile
+        var isRunning = false
+
         private const val ACTION_STOP = "com.sanspet.app.STOP"
         private const val INSETS_FRAME = 0
         private const val INSETS_REGION = 3

@@ -146,7 +146,7 @@ function refresh() { reportAnchor(); reportTouchRects(); }
 
 function applyPetScale() {
   const s = parseFloat(S('petScale', '1')) || 1;
-  document.documentElement.style.setProperty('--pet-scale', String(Math.min(s, 1.4)));
+  document.documentElement.style.setProperty('--pet-scale', String(Math.min(Math.max(s, 0.8), 1.8)));
   setTimeout(refresh, 60);
 }
 
@@ -428,8 +428,14 @@ function proactiveTick() {
 document.addEventListener('touchstart', function () { initAudio(); }, { passive: true, once: true });
 document.addEventListener('mousedown', function () { initAudio(); }, { once: true });
 
+/* 戳一戳限频：一秒最多 2 次 */
+let lastTapAt = 0;
+
 $('#pet').addEventListener('click', function () {
   if (suppressClick) return;
+  const now = Date.now();
+  if (now - lastTapAt < 500) return;
+  lastTapAt = now;
   initAudio();
   if (!$('#historyPanel').classList.contains('hidden')) {
     closeHistory();

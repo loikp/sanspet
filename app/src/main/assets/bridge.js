@@ -44,6 +44,7 @@
     moveBy: () => {},
     savePetPosition: () => {},
     closeOverlay: () => {},
+    isRunning: () => false,
     startOverlay: () => alert('浏览器预览模式：APK 里这里会开启桌面悬浮窗'),
     stopOverlay: () => {},
     requestOverlayPermission: () => {},

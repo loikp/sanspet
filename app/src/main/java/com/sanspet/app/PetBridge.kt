@@ -135,6 +135,9 @@ class PetBridge(
     }
 
     @JavascriptInterface
+    fun isRunning(): Boolean = OverlayPetService.isRunning
+
+    @JavascriptInterface
     fun startOverlay() {
         main.post {
             val intent = Intent(context, OverlayPetService::class.java)

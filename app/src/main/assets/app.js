@@ -23,6 +23,7 @@ function loadSettings() {
   $('#proactive').checked = B.getSetting('proactive', '1') === '1';
   refreshCount();
   refreshPermission();
+  refreshToggle();
 }
 
 function saveSettings() {
@@ -55,13 +56,26 @@ $('#btnPerm').addEventListener('click', function () {
   setTimeout(refreshPermission, 1500);
 });
 
-$('#btnStart').addEventListener('click', function () {
-  saveSettings();
-  refreshPermission();
-  B.startOverlay();
-});
+function refreshToggle() {
+  let running = false;
+  try { running = B.isRunning(); } catch (e) { running = false; }
+  const btn = $('#btnToggle');
+  btn.textContent = running ? '关闭桌宠' : '开启桌宠';
+  btn.className = running ? 'brutal-btn orange' : 'brutal-btn blue';
+}
 
-$('#btnStop').addEventListener('click', function () { B.stopOverlay(); });
+$('#btnToggle').addEventListener('click', function () {
+  let running = false;
+  try { running = B.isRunning(); } catch (e) { running = false; }
+  if (running) {
+    B.stopOverlay();
+  } else {
+    saveSettings();
+    refreshPermission();
+    B.startOverlay();
+  }
+  setTimeout(refreshToggle, 700);
+});
 
 $('#btnClear').addEventListener('click', function () {
   if (confirm('确定清空全部对话历史？')) {
@@ -77,7 +91,10 @@ $('#btnResetPrompt').addEventListener('click', function () {
 });
 
 document.addEventListener('visibilitychange', function () {
-  if (!document.hidden) refreshPermission();
+  if (!document.hidden) {
+    refreshPermission();
+    refreshToggle();
+  }
 });
 
 /* ---------- 模型列表 ---------- */
