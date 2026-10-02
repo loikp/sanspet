@@ -11,7 +11,6 @@ const FIELDS = [
   ['systemPrompt', ''],
   ['petScale', '1'],
   ['contextLimit', '20'],
-  ['typeSpeed', '45'],
   ['proactiveRate', '0.08']
 ];
 

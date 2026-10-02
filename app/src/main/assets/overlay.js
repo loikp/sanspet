@@ -513,9 +513,6 @@ $('#btnChat').addEventListener('click', function () {
 });
 
 $('#btnSend').addEventListener('click', sendMessage);
-$('#chatInput').addEventListener('keydown', function (e) {
-  if (e.key === 'Enter') sendMessage();
-});
 
 $('#btnHistory').addEventListener('click', openHistory);
 $('#btnHistoryClose').addEventListener('click', closeHistory);
