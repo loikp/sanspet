@@ -5,12 +5,13 @@ const $ = (s) => document.querySelector(s);
 const FIELDS = [
   ['baseUrl', 'https://api.deepseek.com/v1'],
   ['apiKey', ''],
-  ['model', 'deepseek-chat'],
+  ['model', 'deepseek-flash'],
   ['temperature', '0.8'],
   ['userName', ''],
   ['systemPrompt', ''],
+  ['userPersona', ''],
   ['petScale', '1'],
-  ['contextLimit', '20'],
+  ['contextLimit', '50'],
   ['proactiveRate', '0.08']
 ];
 
@@ -38,7 +39,9 @@ function saveSettings() {
 }
 
 function refreshCount() {
-  try { $('#msgCount').textContent = B.countMessages(); } catch (e) { $('#msgCount').textContent = '0'; }
+  const el = $('#msgCount');
+  if (!el) return;
+  try { el.textContent = B.countMessages(); } catch (e) { el.textContent = '0'; }
 }
 
 function refreshPermission() {
@@ -48,6 +51,15 @@ function refreshPermission() {
   el.textContent = ok ? '已开启' : '未开启';
   el.className = ok ? 'ok' : 'bad';
 }
+
+/* API Key 显示 / 隐藏 */
+$('#btnKeyToggle').addEventListener('click', function () {
+  const input = $('#apiKey');
+  const icon = $('#iconKeyToggle');
+  const masked = input.classList.toggle('masked');
+  icon.src = masked ? 'icons/eye.svg' : 'icons/eye-off.svg';
+  icon.alt = masked ? '显示' : '隐藏';
+});
 
 $('#btnSave').addEventListener('click', saveSettings);
 

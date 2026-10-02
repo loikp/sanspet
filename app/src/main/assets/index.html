@@ -32,6 +32,8 @@
   .hint { color: #777; font-size: 11px; margin-top: 6px; line-height: 1.5; }
   .checkbox { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 14px; }
   .checkbox input { width: 20px; height: 20px; accent-color: var(--yellow); }
+  /* 用 CSS 打码，不用 type=password，避免调起安全键盘 */
+  .masked { -webkit-text-security: disc; }
 </style>
 </head>
 <body>
@@ -51,16 +53,20 @@
 
 <section>
   <h2>AI 接口</h2>
-  <label>Base URL</label>
+  <label>Base URL（支持 OPENAI 兼容格式）</label>
   <input id="baseUrl" type="text" placeholder="https://api.deepseek.com/v1">
   <label>API Key</label>
-  <input id="apiKey" type="text" placeholder="sk-..." autocomplete="off" autocapitalize="off" spellcheck="false">
+  <div class="row" style="margin-top:0">
+    <input id="apiKey" class="masked" type="text" placeholder="sk-..." autocomplete="off" autocapitalize="off" spellcheck="false" style="flex:1;min-width:120px">
+    <button id="btnKeyToggle" class="icon-btn" title="显示/隐藏"><img id="iconKeyToggle" src="icons/eye.svg" alt="显示"></button>
+  </div>
   <label>模型</label>
   <div class="row" style="margin-top:0">
     <input id="model" type="text" list="models" placeholder="deepseek-chat" style="flex:1;min-width:140px">
     <button id="btnModels" class="brutal-btn orange">获取模型列表</button>
   </div>
   <datalist id="models">
+    <option value="deepseek-flash"></option>
     <option value="deepseek-chat"></option>
     <option value="deepseek-reasoner"></option>
     <option value="gpt-4o-mini"></option>
@@ -77,10 +83,12 @@
 
 <section>
   <h2>角色人设</h2>
-  <label>你的名字（可留空）</label>
+  <label>你的名字（选填）</label>
   <input id="userName" type="text" placeholder="留空的话 Sans 不会叫你名字">
   <label>系统提示词</label>
   <textarea id="systemPrompt" placeholder="留空则使用内置 Sans 人设"></textarea>
+  <label>用户人设（选填）</label>
+  <textarea id="userPersona" placeholder="描述一下你自己，比如「我是学生，喜欢打游戏，最近在准备考试」。留空则不发送。"></textarea>
   <div class="row">
     <button id="btnResetPrompt" class="brutal-btn orange">恢复默认人设</button>
   </div>
@@ -88,7 +96,7 @@
 
 <section>
   <h2>外观</h2>
-  <label>宠物大小（0.8 - 1.8）</label>
+  <label>Sans 大小（0.8 - 1.8）</label>
   <input id="petScale" type="number" min="0.8" max="1.8" step="0.1">
   <div class="hint">保存后会立刻生效。</div>
 </section>
@@ -110,14 +118,14 @@
 
 <section>
   <h2>对话历史</h2>
-  <div class="status">已保存：<span id="msgCount">0</span> 条</div>
+
   <div class="row">
     <button id="btnClear" class="brutal-btn orange">清空全部历史</button>
   </div>
 </section>
 
 <div class="row">
-  <button id="btnSave" class="brutal-btn blue" style="flex:1">保存设置</button>
+  <button id="btnSave" class="brutal-btn blue" style="min-width:150px">保存设置</button>
 </div>
 
 <script src="bridge.js"></script>

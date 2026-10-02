@@ -244,23 +244,32 @@ let dialogQueue = [];
 function splitSentences(text) {
   const out = [];
   let buf = '';
-  const ends = '。！？!?；;…';
+  let dots = 0;
+  const hardEnds = '。！？!?；;';
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
     if (ch === '\n') {
       if (buf.trim()) out.push(buf.trim());
       buf = '';
+      dots = 0;
       continue;
     }
     buf += ch;
+    // 点类计数：英文句点算 1 个点，中文省略号算 3 个点
+    if (ch === '.') dots += 1;
+    else if (ch === '…') dots += 3;
+    else dots = 0;
+
     let cut = false;
-    if (ends.indexOf(ch) >= 0) cut = true;
-    else if (ch === '.') cut = true;
-    if (buf.length >= 30) cut = true;
+    if (hardEnds.indexOf(ch) >= 0) cut = true;
+    else if (dots >= 6) cut = true;        // 满 6 个点才算省略号，才分段
+    if (buf.length >= 30) cut = true;      // 单句不超过 30 字
+
     if (cut) {
       const s = buf.trim();
       if (s) out.push(s);
       buf = '';
+      dots = 0;
     }
   }
   if (buf.trim()) out.push(buf.trim());
@@ -411,11 +420,13 @@ function buildSystemPrompt() {
   let base = S('systemPrompt', '') || DEFAULT_PROMPT;
   const name = (S('userName', '') || '').trim();
   if (name) base += '\n\n用户名字：' + name;
+  const persona = (S('userPersona', '') || '').trim();
+  if (persona) base += '\n\n关于用户：' + persona;
   return base;
 }
 
 function buildPayload(userText) {
-  const limit = parseInt(S('contextLimit', '20'), 10) || 20;
+  const limit = parseInt(S('contextLimit', '50'), 10) || 50;
   const messages = [{ role: 'system', content: buildSystemPrompt() }];
   recentContext(limit).forEach(function (m) { messages.push(m); });
   messages.push({ role: 'user', content: userText });
@@ -423,7 +434,7 @@ function buildPayload(userText) {
   return {
     baseUrl: S('baseUrl', 'https://api.deepseek.com/v1'),
     apiKey: S('apiKey', ''),
-    model: S('model', 'deepseek-chat'),
+    model: S('model', 'deepseek-flash'),
     temperature: parseFloat(S('temperature', '0.8')) || 0.8,
     messages: messages
   };
@@ -538,6 +549,11 @@ $('#btnSend').addEventListener('click', sendMessage);
 
 $('#btnHistory').addEventListener('click', openHistory);
 $('#btnHistoryClose').addEventListener('click', closeHistory);
+$('#btnHistoryTop').addEventListener('click', function () {
+  const el = $('#historyList');
+  if (el.scrollTo) el.scrollTo({ top: 0, behavior: 'smooth' });
+  else el.scrollTop = 0;
+});
 
 $('#historyList').addEventListener('scroll', function () {
   const el = $('#historyList');
