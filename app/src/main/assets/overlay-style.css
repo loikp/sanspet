@@ -68,6 +68,13 @@ html, body.overlay {
 
 #dialog::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
+#dialog { animation: dialogIn 0.14s ease-out; }
+
+@keyframes dialogIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 #dialog .bullet {
   flex: 0 0 auto;
   line-height: 1.25;
@@ -101,6 +108,13 @@ html, body.overlay {
   bottom: 8px;
   display: flex;
   gap: 6px;
+  align-items: center;   /* 输入框和发送键垂直居中对齐 */
+}
+
+#chatBar .icon-btn {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
 }
 
 #chatInput {
@@ -130,6 +144,12 @@ html, body.overlay {
   display: flex;
   flex-direction: column;
   z-index: 80;
+  animation: panelIn 0.18s ease-out;
+}
+
+@keyframes panelIn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.94); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 
 .history-head {

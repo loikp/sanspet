@@ -48,6 +48,8 @@ let cbSeq = 0;
 let lastSpeak = 0;
 let suppressClick = false;
 let historyOpen = false;
+let autoTimer = null;
+const AUTO_NEXT_MS = 7000;
 
 const history = { offset: 0, page: 20, done: false, loading: false };
 
@@ -218,14 +220,19 @@ function showDialog(text, opts) {
     if (skipTyping) {
       el.textContent = text;
       typing = false;
+      scheduleAutoNext();
       return;
     }
     i++;
     el.textContent = text.slice(0, i);
     const ch = text.charAt(i - 1);
     if (ch && ch.trim() !== '') blip();
-    if (i < text.length) setTimeout(tick, speed);
-    else typing = false;
+    if (i < text.length) {
+      setTimeout(tick, speed);
+    } else {
+      typing = false;
+      scheduleAutoNext();
+    }
   }
   tick();
 }
@@ -272,7 +279,25 @@ function showNextSegment() {
   showDialog(seg, { expand: true });
 }
 
+/* 7 秒没人点，就自动播下一句 */
+function scheduleAutoNext() {
+  clearTimeout(autoTimer);
+  if (dialogQueue.length > 0) {
+    autoTimer = setTimeout(function () { showNextSegment(); }, AUTO_NEXT_MS);
+  }
+}
+
+function closeDialog() {
+  clearTimeout(autoTimer);
+  autoTimer = null;
+  dialogQueue = [];
+  $('#dialog').classList.add('hidden');
+  $('#chatBar').classList.add('hidden');
+  setMode(false);
+}
+
 function onClickDialog() {
+  clearTimeout(autoTimer);
   // 点对话框 = 直接显示完整这一句（不打断，只是加速）
   if (typing) {
     skipTyping = true;
@@ -282,9 +307,7 @@ function onClickDialog() {
     showNextSegment();
     return;
   }
-  $('#dialog').classList.add('hidden');
-  $('#chatBar').classList.add('hidden');
-  setMode(false);
+  closeDialog();
 }
 
 /* ---------------- 历史 ---------------- */
@@ -462,22 +485,31 @@ $('#pet').addEventListener('click', function () {
   // 正在打字 / 正在等回复：不响应
   if (typing || busy) return;
 
-  // 还有没说完的句子：点一下显示下一句
+  clearTimeout(autoTimer);
+
+  // 1. 还有没说完的句子 → 显示下一句
   if (dialogQueue.length > 0) {
     showNextSegment();
     return;
   }
 
-  // 全部说完了，才允许「戳一戳刷新对话」（一秒最多 2 次）
-  const now = Date.now();
-  if (now - lastTapAt < 500) return;
-  lastTapAt = now;
-  initAudio();
+  // 2. 话说完了但框还开着 → 先收起
+  if (!$('#dialog').classList.contains('hidden')) {
+    closeDialog();
+    return;
+  }
 
+  // 3. 还有面板开着 → 关掉
   if (!$('#historyPanel').classList.contains('hidden')) {
     closeHistory();
     return;
   }
+
+  // 4. 全关着，才是「戳一戳」（一秒最多 2 次）
+  const now = Date.now();
+  if (now - lastTapAt < 500) return;
+  lastTapAt = now;
+  initAudio();
   speak(pick(REACTIONS));
 });
 
@@ -486,6 +518,10 @@ $('#chatBar').addEventListener('click', function (e) { e.stopPropagation(); });
 
 $('#btnChat').addEventListener('click', function () {
   initAudio();
+  if (!$('#chatBar').classList.contains('hidden')) {
+    closeDialog();
+    return;
+  }
   setMode(true);
   $('#historyPanel').classList.add('hidden');
   $('#dialog').classList.remove('hidden');

@@ -1,5 +1,6 @@
 package com.sanspet.app
 
+import android.animation.ValueAnimator
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -16,6 +17,7 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ViewTreeObserver
 import android.view.WindowManager
+import android.view.animation.DecelerateInterpolator
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.core.app.NotificationCompat
@@ -42,6 +44,14 @@ class OverlayPetService : Service() {
 
     private var winW = 0
     private var winH = 0
+
+    /** 内容尺寸（跟着宠物高度走） */
+    private var contentW = 0
+    private var contentH = 0
+
+    /** 历史面板尺寸（居中时用） */
+    private var panelW = 0
+    private var panelH = 0
 
     /** 宠物中心相对窗口的锚点（像素）：X 距左边，Y 距底边。由网页测量后上报 */
     private var anchorX = 0
@@ -74,8 +84,13 @@ class OverlayPetService : Service() {
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
 
         // 默认尺寸，网页量好宠物高度后会重新上报（只在尺寸变化时调整，不是每帧）
-        winW = minOf(screenW - dp(12), dp(264)).coerceAtLeast(dp(200))
-        winH = minOf(screenH - dp(60), dp(400)).coerceAtLeast(dp(280))
+        contentW = minOf(screenW - dp(12), dp(264)).coerceAtLeast(dp(200))
+        contentH = minOf(screenH - dp(60), dp(400)).coerceAtLeast(dp(280))
+        // 历史面板：更宽更长
+        panelW = (screenW - dp(24)).coerceAtLeast(dp(200))
+        panelH = (screenH * 0.78f).toInt().coerceAtLeast(dp(320))
+        winW = contentW
+        winH = contentH
 
         // 先用估算的锚点，等网页上报真实值后校正
         anchorX = winW / 2
@@ -165,17 +180,40 @@ class OverlayPetService : Service() {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
 
-    /** 窗口位置 = 宠物中心 − 锚点偏移。只改 x/y，尺寸永远不动。 */
+    private fun targetPos(): Pair<Int, Int> =
+        if (centered) {
+            (screenW - winW) / 2 to (screenH - winH) / 2
+        } else {
+            // 纵坐标按「距底边」算：窗口变高时向上生长，宠物在屏幕上不动
+            (posX - anchorX) to (posY - winH + anchorBottom)
+        }
+
+    /** 平滑移动窗口（只改 x/y，不改尺寸） */
+    private fun animatePositionTo(targetX: Int, targetY: Int) {
+        if (!added) return
+        val startX = params.x
+        val startY = params.y
+        if (startX == targetX && startY == targetY) return
+        val anim = ValueAnimator.ofFloat(0f, 1f)
+        anim.duration = 200
+        anim.interpolator = DecelerateInterpolator()
+        anim.addUpdateListener { a ->
+            val f = a.animatedFraction
+            params.x = (startX + (targetX - startX) * f).roundToInt()
+            params.y = (startY + (targetY - startY) * f).roundToInt()
+            try {
+                wm.updateViewLayout(webView, params)
+            } catch (_: Exception) {
+            }
+        }
+        anim.start()
+    }
+
     private fun applyPosition() {
         if (!added) return
-        if (centered) {
-            params.x = (screenW - winW) / 2
-            params.y = (screenH - winH) / 2
-        } else {
-            params.x = posX - anchorX
-            // 纵坐标按「距底边」算：窗口变高时向上生长，宠物在屏幕上不动
-            params.y = posY - winH + anchorBottom
-        }
+        val (tx, ty) = targetPos()
+        params.x = tx
+        params.y = ty
         params.flags = if (focusable) {
             baseFlags()
         } else {
@@ -203,7 +241,10 @@ class OverlayPetService : Service() {
     fun setWindowSize(w: Double, h: Double) {
         val pw = (w * density).roundToInt().coerceIn(dp(160), screenW)
         val ph = (h * density).roundToInt().coerceIn(dp(200), screenH)
-        if (pw == winW && ph == winH) return
+        if (pw == contentW && ph == contentH) return
+        contentW = pw
+        contentH = ph
+        if (centered) return
         winW = pw
         winH = ph
         params.width = winW
@@ -214,7 +255,17 @@ class OverlayPetService : Service() {
     fun setCentered(value: Boolean) {
         if (centered == value) return
         centered = value
-        applyPosition()
+        if (value) {
+            winW = panelW
+            winH = panelH
+        } else {
+            winW = contentW
+            winH = contentH
+        }
+        params.width = winW
+        params.height = winH
+        val (tx, ty) = targetPos()
+        animatePositionTo(tx, ty)
     }
 
     fun setFocusable(value: Boolean) {
