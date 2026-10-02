@@ -51,6 +51,9 @@ class OverlayPetService : Service() {
     /** 只有这些区域接收触摸，其余穿透到桌面 */
     private var touchRects: List<Rect> = emptyList()
 
+    private var resizeCount = 0
+    private var resizeWindowResetAt = 0L
+
     private var dragging = false
     private var dragMoved = false
     private var dragStartRawX = 0f
@@ -181,7 +184,6 @@ class OverlayPetService : Service() {
         }
         if (notify) {
             sendLayout()
-            webView.requestLayout()
         }
     }
 
@@ -210,6 +212,15 @@ class OverlayPetService : Service() {
     }
 
     fun setWindowRect(x: Double, y: Double, w: Double, h: Double) {
+        // 兜底熔断：4 秒内最多调整 25 次窗口，防止网页端异常刷屏把手机拖死
+        val now = System.currentTimeMillis()
+        if (now > resizeWindowResetAt) {
+            resizeWindowResetAt = now + 4000
+            resizeCount = 0
+        }
+        if (resizeCount > 25) return
+        resizeCount++
+
         val pw = (w * density).roundToInt().coerceIn(dp(30), screenW)
         val ph = (h * density).roundToInt().coerceIn(dp(30), screenH)
         val px = (x * density).roundToInt().coerceIn(0, (screenW - pw).coerceAtLeast(0))
@@ -233,7 +244,6 @@ class OverlayPetService : Service() {
 
     fun setTouchRects(rects: List<Rect>) {
         touchRects = rects
-        webView.requestLayout()
         webView.invalidate()
     }
 

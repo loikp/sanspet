@@ -127,6 +127,8 @@ window.__petPos = function (x, y) { petX = x; petY = y; };
    宠物永远钉死在 (petX, petY)，对话框只做屏幕内夹取，绝不推着宠物走。 */
 const PAD = 6;
 let lastBoxes = null;
+let lastWinX = 0;
+let lastWinY = 0;
 
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(v, hi)); }
 
@@ -139,7 +141,7 @@ function placeBoxes(boxes, wx, wy) {
 
 function layout() {
   if (historyOpen) {
-    try { B.setWindowRect(0, 0, screenW, screenH); } catch (e) {}
+    requestResize(0, 0, Math.round(screenW), Math.round(screenH));
     setTimeout(reportTouchRects, 40);
     return;
   }
@@ -201,25 +203,55 @@ function layout() {
   wy = clamp(wy, 0, Math.max(0, Math.round(screenH) - wh));
 
   lastBoxes = boxes;
+  lastWinX = wx;
+  lastWinY = wy;
   placeBoxes(boxes, wx, wy);
 
-  try { B.setWindowRect(wx, wy, ww, wh); } catch (e) {}
+  requestResize(wx, wy, ww, wh);
   setTimeout(reportTouchRects, 0);
 }
 
 /* 原生最终窗口位置（可能被夹过）回报后，再摆一次 */
 window.__layout = function (wx, wy) {
   if (typeof wx !== 'number') return;
+  // 原生没有夹取窗口时不用再动，避免多余往返
+  if (Math.abs(wx - lastWinX) < 1 && Math.abs(wy - lastWinY) < 1) return;
+  lastWinX = wx;
+  lastWinY = wy;
   if (lastBoxes) placeBoxes(lastBoxes, wx, wy);
   setTimeout(reportTouchRects, 0);
 };
 
-function reportWindowRect() { layout(); }
-function reportSoon() {
-  requestAnimationFrame(function () { reportWindowRect(); });
-  setTimeout(reportWindowRect, 80);
-  setTimeout(reportWindowRect, 240);
+/* 窗口尺寸只做有限次调整：节流 + 变化阈值 + 熔断，杜绝 resize 死循环 */
+let lastRect = null;
+let resizeBudget = 12;
+let budgetResetAt = 0;
+let layoutTimer = null;
+
+function scheduleLayout() {
+  if (layoutTimer) return;
+  layoutTimer = setTimeout(function () { layoutTimer = null; layout(); }, 130);
 }
+
+function requestResize(wx, wy, ww, wh) {
+  const now = Date.now();
+  if (now > budgetResetAt) {
+    budgetResetAt = now + 4000;
+    resizeBudget = 12;
+  }
+  if (lastRect) {
+    const delta = Math.abs(lastRect[0] - wx) + Math.abs(lastRect[1] - wy) +
+                  Math.abs(lastRect[2] - ww) + Math.abs(lastRect[3] - wh);
+    if (delta < 6) return;
+  }
+  if (resizeBudget <= 0) return;
+  resizeBudget--;
+  lastRect = [wx, wy, ww, wh];
+  try { B.setWindowRect(wx, wy, ww, wh); } catch (e) {}
+}
+
+function reportWindowRect() { scheduleLayout(); }
+function reportSoon() { scheduleLayout(); }
 
 function applyPetScale() {
   const s = parseFloat(S('petScale', '1')) || 1;
@@ -524,7 +556,6 @@ $('#historyList').addEventListener('scroll', function () {
 
 setInterval(proactiveTick, 45000);
 
-window.addEventListener('resize', function () { reportSoon(); });
 window.addEventListener('load', function () {
   initAudio();
   applyPetScale();
