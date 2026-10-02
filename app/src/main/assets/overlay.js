@@ -353,11 +353,16 @@ function openHistory() {
   $('#dialog').classList.add('hidden');
   $('#chatBar').classList.add('hidden');
   $('#historyPanel').classList.remove('hidden');
-  $('#historyList').scrollTop = 0;
-  if (history.offset === 0) {
-    history.done = false;
-    loadMoreHistory();
-  }
+
+  // 每次打开都从头重新拉取，否则新消息不会出现
+  history.offset = 0;
+  history.done = false;
+  history.loading = false;
+  const box = $('#historyList');
+  box.innerHTML = '';
+  box.scrollTop = 0;
+  loadMoreHistory();
+
   setTimeout(reportTouchRects, 40);
 }
 
