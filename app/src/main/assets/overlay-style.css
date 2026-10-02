@@ -7,21 +7,20 @@ html, body.overlay {
 
 #stage { position: relative; width: 100%; height: 100%; }
 
-/* 内容盒子：位置由原生通过 __layout 反推，宠物中心是基准点 */
+/* 只是个坐标系，不参与布局；子元素全部绝对定位，各自算各自的位置 */
 #petWrap {
   position: absolute;
   left: 0;
   top: 0;
-  width: max-content;
-  padding: 4px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
+  width: 0;
+  height: 0;
   z-index: 60;
 }
 
 #pet {
+  position: absolute;
+  left: 0;
+  top: 0;
   width: calc(110px * var(--pet-scale, 1));
   height: auto;
   max-height: calc(130px * var(--pet-scale, 1));
@@ -39,16 +38,20 @@ html, body.overlay {
   50% { transform: translateY(-6px) scale(1.03); }
 }
 
-/* 两个按钮在宠物正下方居中 */
 #petButtons {
+  position: absolute;
+  left: 0;
+  top: 0;
   display: flex;
   gap: 5px;
-  justify-content: center;
 }
 
 /* ---------------- 对话框 ---------------- */
 
 #dialog {
+  position: absolute;
+  left: 0;
+  top: 0;
   display: flex;
   align-items: flex-start;
   gap: 8px;
@@ -87,10 +90,12 @@ html, body.overlay {
   margin-top: 6px;
 }
 
-/* ---------------- 输入条 ---------------- */
+/* ---------------- 输入条（独立一格） ---------------- */
 
-/* 输入条：独立一格，不塞进对话框 */
 #chatBar {
+  position: absolute;
+  left: 0;
+  top: 0;
   display: flex;
   gap: 6px;
   width: 250px;
@@ -110,7 +115,7 @@ html, body.overlay {
 }
 #chatInput::placeholder { color: #888; }
 
-/* ---------------- 历史：接近手机宽度、够大，不自适应 ---------------- */
+/* ---------------- 历史：接近手机宽度、够大，层级最高 ---------------- */
 
 #historyPanel {
   position: absolute;
@@ -123,7 +128,7 @@ html, body.overlay {
   border: 3px solid var(--white);
   display: flex;
   flex-direction: column;
-  z-index: 40;
+  z-index: 80;
 }
 
 .history-head {
@@ -143,7 +148,9 @@ html, body.overlay {
   flex-direction: column;
   gap: 8px;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
 }
+#historyList::-webkit-scrollbar { width: 0; height: 0; }
 
 .history-item { font-size: 14px; display: flex; gap: 8px; align-items: flex-start; }
 .history-item .bullet { flex: 0 0 auto; }
@@ -151,6 +158,5 @@ html, body.overlay {
 .history-item .time { color: #777; font-size: 11px; font-family: var(--font-ui); }
 .history-empty { color: #888; text-align: center; padding: 30px 0; font-family: var(--font-ui); }
 
-/* 紧凑模式：只显示角色和两个按钮 */
 body.overlay.compact #dialog,
 body.overlay.compact #historyPanel { display: none !important; }
