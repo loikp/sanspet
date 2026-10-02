@@ -19,20 +19,62 @@ const DEFAULT_PROMPT = [
   '回复长度：默认 1-2 句，用户要求解释时可以变长。'
 ].join('\n');
 
-/* 点击角色的随机回应 */
-const REACTIONS = [
-  '嘿，你来了。',
-  '……嗯，我在呢。',
-  '怎么啦？',
-  '戳我干嘛，痒。',
-  '今天过得还行吗？',
-  '我一直在这儿。',
-  '别太累了，真的。',
-  '有事就说，我听着。',
-  '……又想偷懒了？我不拦你。',
-  '嘿，先深呼吸一下。'
+/* 戳一戳的预设语句：按「一小时内被戳多少次」分层 */
+const POKE_TIERS = [
+  {
+    max: 2,
+    hint: '他才刚开始戳你，语气亲切、随意，像老朋友打招呼。',
+    lines: [
+      '嘿，你来了。',
+      '……嗯，我在呢。',
+      '怎么啦？',
+      '今天过得还行吗？',
+      '我一直在这儿。'
+    ]
+  },
+  {
+    max: 5,
+    hint: '他连着戳了你几下，你有点疑惑，但态度还是好的。',
+    lines: [
+      '戳我干嘛，痒。',
+      '……又在玩我。',
+      '有事就说，我听着。',
+      '你手挺闲啊。'
+    ]
+  },
+  {
+    max: 10,
+    hint: '他戳得有点多了，你开始吐槽他，但别刻薄。',
+    lines: [
+      '……你是不是没别的事干了。',
+      '喂，我可看见了。',
+      '再戳我就要收费了。',
+      '……行吧，随你。'
+    ]
+  },
+  {
+    max: 20,
+    hint: '他被戳得挺频繁，你有点烦，但不想伤他，用冷幽默挡一下。',
+    lines: [
+      '……你这手是坏了吗。',
+      '我知道你在，别戳了。',
+      '……我装作没感觉。',
+      '再戳也不会有新反应。'
+    ]
+  },
+  {
+    max: 999999,
+    hint: '他已经戳得离谱了，你彻底躺平，用极简短的回应表示放弃。',
+    lines: [
+      '……',
+      '……我睡了。',
+      'ZZZ',
+      '……你开心就好。'
+    ]
+  }
 ];
 
+/* 没有配 API Key 时，主动回复用的预设 */
 const PROACTIVE = [
   '……你已经很久没理我了。',
   '嘿，还在吗？',
@@ -52,6 +94,46 @@ let autoTimer = null;
 const AUTO_NEXT_MS = 7000;
 
 const history = { offset: 0, page: 20, done: false, loading: false };
+
+/* ---------- 戳一戳计数：滑动一小时窗口，存在本地 ---------- */
+
+function loadTapTimes() {
+  try { return JSON.parse(S('tapTimes', '[]')) || []; } catch (e) { return []; }
+}
+
+/** 记一次戳，返回「最近一小时内的戳击次数」（含这次） */
+function recordTap() {
+  const now = Date.now();
+  const arr = loadTapTimes().filter(function (t) { return now - t < 3600000; });
+  arr.push(now);
+  SS('tapTimes', JSON.stringify(arr));
+  return arr.length;
+}
+
+function tierFor(count) {
+  for (let i = 0; i < POKE_TIERS.length; i++) {
+    if (count <= POKE_TIERS[i].max) return POKE_TIERS[i];
+  }
+  return POKE_TIERS[POKE_TIERS.length - 1];
+}
+
+function hasApiKey() {
+  return (S('apiKey', '') || '').trim().length > 0;
+}
+
+/* 通用 AI 调用：hint 会追加到系统提示词，cb 收到 {ok, content} */
+const pendingCb = {};
+
+function aiAsk(userText, hint, cb) {
+  const cbId = 'ai' + (++cbSeq);
+  pendingCb[cbId] = cb;
+  try {
+    B.chat(JSON.stringify(buildPayload(userText, hint)), cbId);
+  } catch (e) {
+    delete pendingCb[cbId];
+    cb({ ok: false, error: '调用失败' });
+  }
+}
 
 function S(key, def) { try { return B.getSetting(key, String(def)); } catch (e) { return String(def); } }
 function SS(key, val) { try { B.setSetting(key, String(val)); } catch (e) {} }
@@ -425,9 +507,11 @@ function buildSystemPrompt() {
   return base;
 }
 
-function buildPayload(userText) {
+function buildPayload(userText, hint) {
   const limit = parseInt(S('contextLimit', '50'), 10) || 50;
-  const messages = [{ role: 'system', content: buildSystemPrompt() }];
+  let sys = buildSystemPrompt();
+  if (hint) sys += '\n\n【当前情境】\n' + hint;
+  const messages = [{ role: 'system', content: sys }];
   recentContext(limit).forEach(function (m) { messages.push(m); });
   messages.push({ role: 'user', content: userText });
 
@@ -451,9 +535,19 @@ function sendMessage() {
   busy = true;
 
   const cbId = 'cb' + (++cbSeq);
+  pendingCb[cbId] = function (r) {
+    busy = false;
+    if (r.ok) {
+      addHistory('assistant', r.content);
+      speak(r.content);
+    } else {
+      speak('...出问题了。\n' + (r.error || ''));
+    }
+  };
   try {
     B.chat(JSON.stringify(buildPayload(text)), cbId);
   } catch (e) {
+    delete pendingCb[cbId];
     busy = false;
     showDialog('...出问题了。');
   }
@@ -473,13 +567,64 @@ window.__sansCallback = function (id, resultJson) {
 
 /* ---------------- 主动回复 ---------------- */
 
+/* 戳一戳：没有 Key 一律预设；有 Key 按概率走 LLM */
+function pokeOnce() {
+  const count = recordTap();
+  const tier = tierFor(count);
+  let rate = parseFloat(S('pokeLlmRate', '0.5'));
+  if (isNaN(rate)) rate = 0.5;
+
+  const useLlm = hasApiKey() && Math.random() < rate;
+  if (!useLlm) {
+    speak(pick(tier.lines));
+    return;
+  }
+
+  busy = true;
+  showDialog('...');
+  const hint = '用户刚刚戳了你一下。最近一小时内，他总共戳了你 ' + count + ' 次（包含刚才这次）。' +
+               tier.hint +
+               '\n\n现在用一句很短的话回应他，不超过 20 个字。只输出你要说的话，不要解释、不要旁白。';
+  aiAsk('（用户戳了你一下）', hint, function (r) {
+    busy = false;
+    if (r.ok && r.content) {
+      addHistory('assistant', r.content);
+      speak(r.content);
+    } else {
+      speak(pick(tier.lines));
+    }
+  });
+}
+
+/* 主动回复：没 Key 用预设；有 Key 就让模型顺着之前的话题追问 */
 function proactiveTick() {
   if (S('proactive', '1') !== '1') return;
   if (busy || typing) return;
   if (historyOpen) return;
   if (Date.now() - lastSpeak < 3 * 60 * 1000) return;
+
   const rate = parseFloat(S('proactiveRate', '0.08')) || 0;
-  if (Math.random() < rate) speak(pick(PROACTIVE));
+  if (Math.random() >= rate) return;
+
+  if (!hasApiKey()) {
+    speak(pick(PROACTIVE));
+    return;
+  }
+
+  busy = true;
+  const hint = '现在你决定主动开口。' +
+               '如果之前聊过什么，就顺着那个话题追问一句（比如问后来怎么样了、有没有好转）；' +
+               '如果没什么可追问的，就说一句日常的关心。' +
+               '\n\n不超过 25 个字。只输出你要说的话，不要解释、不要旁白。';
+  aiAsk('（你决定主动开口）', hint, function (r) {
+    busy = false;
+    if (r.ok && r.content) {
+      addHistory('assistant', r.content);
+      speak(r.content);
+    } else {
+      speak(pick(PROACTIVE));
+    }
+  });
 }
 
 /* ---------------- 事件 ---------------- */
@@ -521,7 +666,7 @@ $('#pet').addEventListener('click', function () {
   if (now - lastTapAt < 500) return;
   lastTapAt = now;
   initAudio();
-  speak(pick(REACTIONS));
+  pokeOnce();
 });
 
 $('#dialog').addEventListener('click', onClickDialog);

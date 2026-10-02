@@ -12,7 +12,8 @@ const FIELDS = [
   ['userPersona', ''],
   ['petScale', '1'],
   ['contextLimit', '50'],
-  ['proactiveRate', '0.08']
+  ['proactiveRate', '0.08'],
+  ['pokeLlmRate', '0.5']
 ];
 
 function loadSettings() {

@@ -114,6 +114,9 @@
   <label>触发概率（每次检查）</label>
   <input id="proactiveRate" type="number" min="0" max="1" step="0.01">
   <div class="hint">每 45 秒检查一次，概率越低越安静。</div>
+  <label>戳一戳走 AI 的概率（0 - 1）</label>
+  <input id="pokeLlmRate" type="number" min="0" max="1" step="0.05">
+  <div class="hint">没配 API Key 时这项无效，一律用预设语句。1 = 每次都让 AI 回，0 = 只用预设。</div>
 </section>
 
 <section>
