@@ -54,6 +54,7 @@ let petX = 0;
 let petY = 0;
 
 const history = { offset: 0, page: 20, done: false, loading: false };
+let historyOpen = false;
 
 function S(key, def) { try { return B.getSetting(key, String(def)); } catch (e) { return String(def); } }
 function SS(key, val) { try { B.setSetting(key, String(val)); } catch (e) {} }
@@ -136,18 +137,21 @@ window.__layout = function (wx, wy) {
 
 /* 内容盒子实际占多大，报给原生当作窗口大小 */
 function reportWindowRect() {
+  if (historyOpen) { useFullScreenWindow(); return; }
   const wrap = $('#petWrap');
   const pet = $('#pet');
   if (!wrap || !pet) return;
   const wr = wrap.getBoundingClientRect();
   const pr = pet.getBoundingClientRect();
   if (!pr.width || !wr.width) return;
+  const w = Math.max(wr.width, wrap.offsetWidth, wrap.scrollWidth);
+  const h = Math.max(wr.height, wrap.offsetHeight, wrap.scrollHeight);
   const offX = pr.left - wr.left;
   const offY = pr.top - wr.top;
   const left = petX - pr.width / 2;
   const top = petY - pr.height / 2;
   try { B.setPetSize(pr.width, pr.height); } catch (e) {}
-  try { B.setWindowRect(left - offX, top - offY, wr.width, wr.height); } catch (e) {}
+  try { B.setWindowRect(left - offX, top - offY, w, h); } catch (e) {}
   setTimeout(reportTouchRects, 0);
 }
 
@@ -166,7 +170,11 @@ function reportTouchRects() {
   try { B.setTouchRects(JSON.stringify(rects)); } catch (e) {}
 }
 
-function reportSoon() { requestAnimationFrame(function () { reportWindowRect(); }); }
+function reportSoon() {
+  requestAnimationFrame(function () { reportWindowRect(); });
+  setTimeout(reportWindowRect, 80);
+  setTimeout(reportWindowRect, 240);
+}
 
 function applyPetScale() {
   const s = parseFloat(S('petScale', '1')) || 1;
@@ -334,6 +342,7 @@ function loadMoreHistory() {
 }
 
 function openHistory() {
+  historyOpen = true;
   setMode(true);
   $('#dialog').classList.add('hidden');
   $('#chatBar').classList.add('hidden');
@@ -347,8 +356,10 @@ function openHistory() {
 }
 
 function closeHistory() {
+  historyOpen = false;
   $('#historyPanel').classList.add('hidden');
   setMode(false);
+  setTimeout(reportWindowRect, 40);
 }
 
 /* ---------------- 聊天 ---------------- */
@@ -432,6 +443,10 @@ document.addEventListener('mousedown', function () { initAudio(); }, { once: tru
 $('#pet').addEventListener('click', function () {
   if (suppressClick) return;
   initAudio();
+  if (!$('#historyPanel').classList.contains('hidden')) {
+    closeHistory();
+    return;
+  }
   showDialog(pick(REACTIONS));
 });
 

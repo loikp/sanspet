@@ -2,6 +2,7 @@ package com.sanspet.app
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -355,11 +356,18 @@ class OverlayPetService : Service() {
                 .createNotificationChannel(channel)
         }
 
+        val stopIntent = Intent(this, OverlayPetService::class.java).setAction(ACTION_STOP)
+        val stopPending = PendingIntent.getService(
+            this, 1, stopIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
         val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("SansPet")
             .setContentText("Sans 正在你的桌面上")
             .setSmallIcon(R.drawable.ic_notify)
             .setOngoing(true)
+            .addAction(0, "关闭桌宠", stopPending)
             .build()
 
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -368,6 +376,14 @@ class OverlayPetService : Service() {
             0
         }
         ServiceCompat.startForeground(this, 1, notification, type)
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        return START_STICKY
     }
 
     override fun onDestroy() {
@@ -382,6 +398,7 @@ class OverlayPetService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
+        private const val ACTION_STOP = "com.sanspet.app.STOP"
         private const val INSETS_FRAME = 0
         private const val INSETS_REGION = 3
         private const val KEY_X = "petX"
