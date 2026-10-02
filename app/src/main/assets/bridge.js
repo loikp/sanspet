@@ -37,6 +37,7 @@
 
     setExpanded: () => {},
     setAnchor: () => {},
+    setCentered: () => {},
     setFocusable: () => {},
     setTouchRects: () => {},
     refreshPet: () => {},

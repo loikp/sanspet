@@ -83,6 +83,11 @@ class PetBridge(
     }
 
     @JavascriptInterface
+    fun setCentered(value: Boolean) {
+        main.post { overlay?.setCentered(value) }
+    }
+
+    @JavascriptInterface
     fun setFocusable(value: Boolean) {
         main.post { overlay?.setFocusable(value) }
     }

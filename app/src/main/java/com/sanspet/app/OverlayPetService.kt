@@ -53,6 +53,9 @@ class OverlayPetService : Service() {
 
     private var touchRects: List<Rect> = emptyList()
 
+    /** 历史面板打开时把窗口挪到屏幕正中央（面板铺满窗口，于是面板就在屏幕正中） */
+    private var centered = false
+
     private var dragging = false
     private var dragMoved = false
     private var dragStartRawX = 0f
@@ -164,8 +167,13 @@ class OverlayPetService : Service() {
     /** 窗口位置 = 宠物中心 − 锚点偏移。只改 x/y，尺寸永远不动。 */
     private fun applyPosition() {
         if (!added) return
-        params.x = posX - anchorX
-        params.y = posY - anchorY
+        if (centered) {
+            params.x = (screenW - winW) / 2
+            params.y = (screenH - winH) / 2
+        } else {
+            params.x = posX - anchorX
+            params.y = posY - anchorY
+        }
         params.flags = if (focusable) {
             baseFlags()
         } else {
@@ -186,6 +194,12 @@ class OverlayPetService : Service() {
         if (ax == anchorX && ay == anchorY) return
         anchorX = ax
         anchorY = ay
+        applyPosition()
+    }
+
+    fun setCentered(value: Boolean) {
+        if (centered == value) return
+        centered = value
         applyPosition()
     }
 
@@ -256,7 +270,7 @@ class OverlayPetService : Service() {
      * 移动的是「宠物中心」，返回 false 让 WebView 继续处理点击。
      */
     private fun attachDragHandler() {
-        val slop = dp(8)
+        val slop = dp(16)
         webView.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
@@ -268,7 +282,7 @@ class OverlayPetService : Service() {
                     dragMoved = false
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    if (dragging) {
+                    if (dragging && !centered) {
                         val dx = event.rawX - dragStartRawX
                         val dy = event.rawY - dragStartRawY
                         if (!dragMoved && (abs(dx) > slop || abs(dy) > slop)) dragMoved = true

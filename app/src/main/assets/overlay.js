@@ -120,8 +120,11 @@ function blip() {
 function reportAnchor() {
   const pet = $('#pet');
   if (!pet || !pet.offsetWidth) return;
-  const r = pet.getBoundingClientRect();
-  try { B.setAnchor(r.left + r.width / 2, r.top + r.height / 2); } catch (e) {}
+  // 用 offset* 而不是 getBoundingClientRect：
+  // 后者会把「上下浮动」的动画位移算进去，导致锚点抖动、宠物被带着微移
+  const ax = pet.offsetLeft + pet.offsetWidth / 2;
+  const ay = pet.offsetTop + pet.offsetHeight / 2;
+  try { B.setAnchor(ax, ay); } catch (e) {}
 }
 
 /* 只有这些方块接收触摸，窗口里的空白处穿透到桌面 */
@@ -209,14 +212,60 @@ function showDialog(text, opts) {
   tick();
 }
 
+/* ---------- 分段：按句末标点断句，每句不超过 30 个字符 ---------- */
+
+let dialogQueue = [];
+
+function splitSentences(text) {
+  const out = [];
+  let buf = '';
+  const ends = '。！？!?；;…';
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '\n') {
+      if (buf.trim()) out.push(buf.trim());
+      buf = '';
+      continue;
+    }
+    buf += ch;
+    let cut = false;
+    if (ends.indexOf(ch) >= 0) cut = true;
+    else if (ch === '.') cut = true;
+    if (buf.length >= 30) cut = true;
+    if (cut) {
+      const s = buf.trim();
+      if (s) out.push(s);
+      buf = '';
+    }
+  }
+  if (buf.trim()) out.push(buf.trim());
+  return out.length ? out : [text];
+}
+
+/* 一整段话 → 拆成几句，逐句重新打字 */
+function speak(text) {
+  dialogQueue = splitSentences(text || '');
+  showNextSegment();
+}
+
+function showNextSegment() {
+  const seg = dialogQueue.shift();
+  if (!seg) return;
+  showDialog(seg, { expand: true });
+}
+
 function onClickDialog() {
   if (typing) {
     skipTyping = true;
-  } else {
-    $('#dialog').classList.add('hidden');
-    $('#chatBar').classList.add('hidden');
-    setMode(false);
+    return;
   }
+  if (dialogQueue.length > 0) {
+    showNextSegment();
+    return;
+  }
+  $('#dialog').classList.add('hidden');
+  $('#chatBar').classList.add('hidden');
+  setMode(false);
 }
 
 /* ---------------- 历史 ---------------- */
@@ -281,6 +330,7 @@ function loadMoreHistory() {
 function openHistory() {
   historyOpen = true;
   setMode(true);
+  try { B.setCentered(true); } catch (e) {}
   $('#dialog').classList.add('hidden');
   $('#chatBar').classList.add('hidden');
   $('#historyPanel').classList.remove('hidden');
@@ -295,6 +345,7 @@ function openHistory() {
 function closeHistory() {
   historyOpen = false;
   $('#historyPanel').classList.add('hidden');
+  try { B.setCentered(false); } catch (e) {}
   setMode(false);
 }
 
@@ -355,7 +406,7 @@ window.__sansCallback = function (id, resultJson) {
   try { r = JSON.parse(resultJson); } catch (e) { r = { ok: false, error: '解析失败' }; }
   if (r.ok) {
     addHistory('assistant', r.content);
-    showDialog(r.content);
+    speak(r.content);
   } else {
     showDialog('...出问题了。\n' + (r.error || ''));
   }
@@ -369,7 +420,7 @@ function proactiveTick() {
   if (historyOpen) return;
   if (Date.now() - lastSpeak < 3 * 60 * 1000) return;
   const rate = parseFloat(S('proactiveRate', '0.08')) || 0;
-  if (Math.random() < rate) showDialog(pick(PROACTIVE));
+  if (Math.random() < rate) speak(pick(PROACTIVE));
 }
 
 /* ---------------- 事件 ---------------- */
@@ -384,7 +435,7 @@ $('#pet').addEventListener('click', function () {
     closeHistory();
     return;
   }
-  showDialog(pick(REACTIONS));
+  speak(pick(REACTIONS));
 });
 
 $('#dialog').addEventListener('click', onClickDialog);
