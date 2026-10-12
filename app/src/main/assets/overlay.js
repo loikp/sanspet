@@ -385,12 +385,15 @@ function splitEllipsis(part) {
   return out.length ? out : [part];
 }
 
-/* 第三遍：太长的句子按单位切，英文优先在空格断 */
+/* 第三遍：太长的句子按单位切
+   规则：取「最靠后的一个可断点」——空格或逗号类；
+        没有可断点才硬切（中文任意位置可断，英文靠空格保证不切单词） */
 function splitLong(part, max) {
   const out = [];
+  const chars = Array.from(part);
   let buf = '';
   let units = 0;
-  let breakAt = -1;
+  let breakAt = -1;   // 最近一个可断点（空格 / 逗号 / 顿号）
 
   function flush() {
     const t = buf.trim();
@@ -400,8 +403,10 @@ function splitLong(part, max) {
     breakAt = -1;
   }
 
-  for (const ch of part) {
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
     const u = charUnits(ch);
+
     if (units + u > max && buf) {
       if (breakAt > 0) {
         out.push(buf.slice(0, breakAt).trim());
@@ -413,9 +418,12 @@ function splitLong(part, max) {
         flush();
       }
     }
+
     buf += ch;
     units += u;
-    if (SOFT_BREAKS.indexOf(ch) >= 0) breakAt = buf.length;
+    if (ch === ' ' || ch === '\t' || ch === '，' || ch === ',' || ch === '、') {
+      breakAt = buf.length;
+    }
   }
   flush();
   return out;

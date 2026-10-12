@@ -1,9 +1,6 @@
 /* SansPet 分段规则测试
- *
  * 用法： node tools/split-test.js
- *
- * 规则来自 app/src/main/assets/overlay.js 里的分段代码（下面这段是自动同步的，
- * 改完 overlay.js 可以重新生成，或直接手改这里）。
+ * 规则来自 app/src/main/assets/overlay.js（下面这段与它保持一致）
  */
 /* ================= 分段规则 =================
 
@@ -67,12 +64,15 @@ function splitEllipsis(part) {
   return out.length ? out : [part];
 }
 
-/* 第三遍：太长的句子按单位切，英文优先在空格断 */
+/* 第三遍：太长的句子按单位切
+   规则：取「最靠后的一个可断点」——空格或逗号类；
+        没有可断点才硬切（中文任意位置可断，英文靠空格保证不切单词） */
 function splitLong(part, max) {
   const out = [];
+  const chars = Array.from(part);
   let buf = '';
   let units = 0;
-  let breakAt = -1;
+  let breakAt = -1;   // 最近一个可断点（空格 / 逗号 / 顿号）
 
   function flush() {
     const t = buf.trim();
@@ -82,8 +82,10 @@ function splitLong(part, max) {
     breakAt = -1;
   }
 
-  for (const ch of part) {
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
     const u = charUnits(ch);
+
     if (units + u > max && buf) {
       if (breakAt > 0) {
         out.push(buf.slice(0, breakAt).trim());
@@ -95,9 +97,12 @@ function splitLong(part, max) {
         flush();
       }
     }
+
     buf += ch;
     units += u;
-    if (SOFT_BREAKS.indexOf(ch) >= 0) breakAt = buf.length;
+    if (ch === ' ' || ch === '\t' || ch === '，' || ch === ',' || ch === '、') {
+      breakAt = buf.length;
+    }
   }
   flush();
   return out;
@@ -126,17 +131,30 @@ function show(label, text) {
   const parts = splitSentences(text);
   console.log('--- ' + label);
   parts.forEach(function (p, i) {
-    console.log('  [' + (i + 1) + '] (' + (units(p) / 2) + ' 字) ' + p);
+    console.log('  [' + (i + 1) + '] (' + (units(p) / 2) + ' 字) ' + JSON.stringify(p));
   });
 }
 
+console.log('【一、标点断句】');
 show('1. 三个点：不该断', '嘿...你今天怎么样？我有点累。');
 show('2. 两个省略号(6点)：该断', '我……不知道。');
 show('3. 星号：不该断', '*他强调*了这一点，然后走了。');
 show('4. 单个句点：不该断', '3.14 是圆周率，U.S. 是美国。');
-show('5. 六个点：该断，且原文不变', '他说完了......然后走了。');
-show('6. 长英文：按空格断，不切断单词', 'This is a fairly long English sentence that should be broken into pieces at word boundaries instead of cutting a word in half.');
-show('7. 长中文：按 30 字断', '这是一段很长的中文用来测试字数截断的规则是否按照三十个中文字符来切分并且不会把标点符号弄丢');
-show('8. 引号收尾：跟着前一句', '他说：「今天不去了。」然后就走开了。');
-show('9. 半角计数：英文占 1 个单位', 'OK, I see you. Fine.');
-show('10. 单个省略号：不该断', '嗯…我懂了。');
+show('5. 六个点：该断，原文不变', '他说完了......然后走了。');
+show('6. 引号收尾：跟着前一句', '他说：「今天不去了。」然后就走开了。');
+show('7. 单个省略号：不该断', '嗯…我懂了。');
+
+console.log('');
+console.log('【二、换行 / 空行】');
+show('8. 单个换行：断', '第一行\n第二行');
+show('9. 空行：只断一次，不吐出空句子', '第一行\n\n\n第二行');
+
+console.log('');
+console.log('【三、中英混合与字数】');
+show('10. 半角英文：1 单位', 'OK, I see you. Fine.');
+show('11. 长英文：按空格断，不切单词', 'This is a fairly long English sentence that should be broken at word boundaries instead of cutting any word in half.');
+show('12. 长中文：按 30 字断', '这是一段很长的中文用来测试字数截断的规则是否按照三十个中文字符来切分并且不会把标点符号弄丢');
+show('13. 中英混合：英文不切词', '帮你写一个 React component that fetches data from the API and renders a list of items for the user');
+show('14. 中文里的空格：不该当英文词边界', '这里 中间有个空格 但是整句话很短 所以不该被切开');
+show('15. 中英混合超长：优先在逗号断', '帮我看看这个 React component，它需要从 API 拉数据但是每次都会报错，我怀疑是 useEffect 的依赖数组写错了，你看看是不是这样');
+
