@@ -119,10 +119,7 @@ let asleep = false;
 window.__onSleep = function () {
   asleep = true;
   document.body.classList.add('sleeping');
-  if (sleepImgOK) {
-    const pet = $('#pet');
-    if (pet) pet.src = SLEEP_SRC;
-  }
+  if (sleepFrames.length) playFrames(sleepFrames, 0);
   const lines = (PRESETS && PRESETS.states && PRESETS.states.sleeping &&
                  PRESETS.states.sleeping.lines) || ['……', 'Zzz'];
   interactSpeak('（你困得睡着了）',
@@ -133,6 +130,7 @@ window.__onSleep = function () {
 window.__onWake = function () {
   asleep = false;
   document.body.classList.remove('sleeping');
+  stopFrames();
   const pet = $('#pet');
   if (pet) pet.src = IDLE_SRC;
   const lines = (PRESETS && PRESETS.states && PRESETS.states.waking &&
@@ -177,10 +175,61 @@ const CHAR_DIR = 'character/';
 const WALK_DIR = CHAR_DIR + 'walk/';
 const FACE_DIR = CHAR_DIR + 'face/';
 
+/* ---------- 序列帧通用工具 ----------
+   探测 <base>_0.png / _1.png / … 直到缺一张为止。
+   每 0.5 秒换一帧，循环播放。
+   ------------------------------------ */
+
+const FRAME_MS = 500;
+const MAX_FRAMES = 16;
+
+function loadSequence(base, cb) {
+  const frames = [];
+  let i = 0;
+  function probe() {
+    if (i >= MAX_FRAMES) { cb(frames); return; }
+    const img = new Image();
+    img.onload = function () { frames.push(base + '_' + i + '.png'); i++; probe(); };
+    img.onerror = function () { cb(frames); };
+    img.src = base + '_' + i + '.png';
+  }
+  probe();
+}
+
+let playAnim = null;
+let playTimer = null;
+
+/* duration > 0 → 播完后回调；duration = 0 → 一直播（睡觉用） */
+function playFrames(frames, duration, onEnd) {
+  stopFrames();
+  const pet = $('#pet');
+  if (!pet || !frames || !frames.length) return;
+
+  let i = 0;
+  pet.src = frames[0];
+  if (frames.length > 1) {
+    playAnim = setInterval(function () {
+      i = (i + 1) % frames.length;
+      pet.src = frames[i];
+    }, FRAME_MS);
+  }
+  if (duration > 0) {
+    playTimer = setTimeout(function () {
+      stopFrames();
+      if (onEnd) onEnd();
+    }, duration);
+  }
+}
+
+function stopFrames() {
+  if (playAnim) { clearInterval(playAnim); playAnim = null; }
+  if (playTimer) { clearTimeout(playTimer); playTimer = null; }
+}
+
 /* 主图路径：探测到 character/idle.png 就用它，否则用根目录的 sans.png */
 let IDLE_SRC = 'sans.png';
-let SLEEP_SRC = CHAR_DIR + 'sleep.png';
-let sleepImgOK = false;
+let sleepFrames = [];
+const faceFrames = {};
 
 function probeCharacter() {
   const main = new Image();
@@ -192,10 +241,12 @@ function probeCharacter() {
   main.onerror = function () { IDLE_SRC = 'sans.png'; };
   main.src = CHAR_DIR + 'idle.png';
 
-  const slp = new Image();
-  slp.onload = function () { sleepImgOK = true; };
-  slp.onerror = function () { sleepImgOK = false; };
-  slp.src = SLEEP_SRC;
+  // 睡觉：character/sleep_0.png, _1.png …
+  loadSequence(CHAR_DIR + 'sleep', function (frames) {
+    sleepFrames = frames;
+    // 有专用睡觉图时，关掉「放倒+半透明」的兜底样式
+    document.body.classList.toggle('has-sleep-img', frames.length > 0);
+  });
 }
 
 /* ================= 待机表情 =================
@@ -216,15 +267,20 @@ const FACE_HOLD_MS = 10000;
 
 function probeFaces() {
   FACE_NAMES.forEach(function (name) {
-    const img = new Image();
-    img.onload = function () { faceOK[name] = true; };
-    img.onerror = function () { faceOK[name] = false; };
-    img.src = FACE_DIR + name + '.png';
+    // 先试动画帧 wink_0.png / wink_1.png …
+    loadSequence(FACE_DIR + name, function (frames) {
+      if (frames && frames.length) { faceFrames[name] = frames; return; }
+      // 没有动画帧就试单张 wink.png
+      const img = new Image();
+      img.onload = function () { faceFrames[name] = [FACE_DIR + name + '.png']; };
+      img.onerror = function () { faceFrames[name] = []; };
+      img.src = FACE_DIR + name + '.png';
+    });
   });
 }
 
 function availableFaces() {
-  return FACE_NAMES.filter(function (n) { return faceOK[n]; });
+  return FACE_NAMES.filter(function (n) { return faceFrames[n] && faceFrames[n].length; });
 }
 
 function showExpression() {
@@ -235,13 +291,13 @@ function showExpression() {
   const names = availableFaces();
   if (!names.length) return;          // 没素材就什么都不做
 
-  const pet = $('#pet');
-  if (!pet) return;
-  pet.src = FACE_DIR + pick(names) + '.png';
-
-  setTimeout(function () {
-    if (walkDir === 'none' && !asleep) pet.src = IDLE_SRC;
-  }, FACE_HOLD_MS);
+  const frames = faceFrames[pick(names)];
+  playFrames(frames, FACE_HOLD_MS, function () {
+    if (walkDir === 'none' && !asleep) {
+      const pet = $('#pet');
+      if (pet) pet.src = IDLE_SRC;
+    }
+  });
 }
 
 function scheduleExpression() {

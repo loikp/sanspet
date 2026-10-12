@@ -39,7 +39,7 @@ html, body.overlay {
 /* 睡觉中：
    优先换成专用睡觉图 assets/sans_sleep.png（有就自动用）；
    没有的话就把角色放倒一点 + 稍透明，纯 transform/opacity，零性能开销 */
-body.sleeping #pet {
+body.sleeping:not(.has-sleep-img) #pet {
   animation: none;
   transform: rotate(-18deg) translateY(10px);
   opacity: 0.78;
