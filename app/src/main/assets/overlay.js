@@ -323,39 +323,116 @@ function showDialog(text, opts) {
 
 let dialogQueue = [];
 
-function splitSentences(text) {
+/* ================= 分段规则 =================
+
+   单位：中文/全角 = 2 个单位，英文/数字/半角 = 1 个单位
+   上限：60 个单位（= 30 个中文字）
+
+   第一遍（正则）：只在真正的句末标点后断开
+       可以断：。 ！ ？ ! ? ； ;
+       不能断：句点 .   省略号 …   空格   星号 *   逗号   等
+
+   第二遍：省略号才断
+       满 6 个点（......）或两个省略号（……）→ 断
+       单个 .  或单个 …  → 不断
+
+   第三遍（兜底）：只有某一句超过 60 个单位，才按长度再切
+       英文优先在空格处断，切不齐才硬切
+
+   整个过程不改动原文一个字
+   ============================================ */
+
+const MAX_UNITS = 60;
+const CJK_START = 0x1100;
+const SOFT_BREAKS = ' ,，、';
+
+function charUnits(ch) {
+  return (ch.codePointAt(0) >= CJK_START) ? 2 : 1;
+}
+
+function textUnits(str) {
+  let n = 0;
+  for (const ch of str) n += charUnits(ch);
+  return n;
+}
+
+/* 第一遍：按句末标点切句（标点跟着前一句） */
+function splitByPunctuation(text) {
+  const re = /[^。！？!?；;\n]+[。！？!?；;]+[」』”’）)】》]*|[^。！？!?；;\n]+/g;
+  const parts = String(text || '').match(re) || [];
+  const out = [];
+  parts.forEach(function (p) {
+    const t = p.trim();
+    if (t) out.push(t);
+  });
+  return out;
+}
+
+/* 第二遍：省略号断句（保留原来的点，不改写） */
+function splitEllipsis(part) {
+  const out = [];
+  const re = /\.{6,}|…{2,}/g;
+  let idx = 0;
+  let m;
+  while ((m = re.exec(part)) !== null) {
+    const end = m.index + m[0].length;
+    const seg = part.slice(idx, end).trim();
+    if (seg) out.push(seg);
+    idx = end;
+  }
+  const tail = part.slice(idx).trim();
+  if (tail) out.push(tail);
+  return out.length ? out : [part];
+}
+
+/* 第三遍：太长的句子按单位切，英文优先在空格断 */
+function splitLong(part, max) {
   const out = [];
   let buf = '';
-  let dots = 0;
-  const hardEnds = '。！？!?；;';
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (ch === '\n') {
-      if (buf.trim()) out.push(buf.trim());
-      buf = '';
-      dots = 0;
-      continue;
+  let units = 0;
+  let breakAt = -1;
+
+  function flush() {
+    const t = buf.trim();
+    if (t) out.push(t);
+    buf = '';
+    units = 0;
+    breakAt = -1;
+  }
+
+  for (const ch of part) {
+    const u = charUnits(ch);
+    if (units + u > max && buf) {
+      if (breakAt > 0) {
+        out.push(buf.slice(0, breakAt).trim());
+        const rest = buf.slice(breakAt);
+        buf = rest;
+        units = textUnits(rest);
+        breakAt = -1;
+      } else {
+        flush();
+      }
     }
     buf += ch;
-    // 点类计数：英文句点算 1 个点，中文省略号算 3 个点
-    if (ch === '.') dots += 1;
-    else if (ch === '…') dots += 3;
-    else dots = 0;
-
-    let cut = false;
-    if (hardEnds.indexOf(ch) >= 0) cut = true;
-    else if (dots >= 6) cut = true;        // 满 6 个点才算省略号，才分段
-    if (buf.length >= 30) cut = true;      // 单句不超过 30 字
-
-    if (cut) {
-      const s = buf.trim();
-      if (s) out.push(s);
-      buf = '';
-      dots = 0;
-    }
+    units += u;
+    if (SOFT_BREAKS.indexOf(ch) >= 0) breakAt = buf.length;
   }
-  if (buf.trim()) out.push(buf.trim());
-  return out.length ? out : [text];
+  flush();
+  return out;
+}
+
+function splitSentences(text) {
+  const out = [];
+  splitByPunctuation(text).forEach(function (p) {
+    splitEllipsis(p).forEach(function (q) {
+      if (textUnits(q) <= MAX_UNITS) {
+        out.push(q);
+      } else {
+        splitLong(q, MAX_UNITS).forEach(function (x) { if (x) out.push(x); });
+      }
+    });
+  });
+  return out.length ? out : [String(text || '')];
 }
 
 /* 一整段话 → 拆成几句，逐句重新打字 */
