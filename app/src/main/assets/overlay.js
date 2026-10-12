@@ -121,7 +121,7 @@ window.__onSleep = function () {
   document.body.classList.add('sleeping');
   if (sleepImgOK) {
     const pet = $('#pet');
-    if (pet) pet.src = 'sans_sleep.png';
+    if (pet) pet.src = SLEEP_SRC;
   }
   const lines = (PRESETS && PRESETS.states && PRESETS.states.sleeping &&
                  PRESETS.states.sleeping.lines) || ['……', 'Zzz'];
@@ -134,7 +134,7 @@ window.__onWake = function () {
   asleep = false;
   document.body.classList.remove('sleeping');
   const pet = $('#pet');
-  if (pet) pet.src = 'sans.png';
+  if (pet) pet.src = IDLE_SRC;
   const lines = (PRESETS && PRESETS.states && PRESETS.states.waking &&
                  PRESETS.states.waking.lines) || ['……嗯？'];
   interactSpeak('（用户把你戳醒了）',
@@ -162,6 +162,42 @@ const walkOK = {};
 let walkDir = 'none';
 let walkTimer = null;
 
+/* ================= 角色素材目录 =================
+
+   全部角色图放在 assets/character/ 下：
+       character/idle.png           待机主图（没有就退回 sans.png）
+       character/sleep.png          睡觉（没有就把主图放倒+半透明）
+       character/walk/<方向>_<帧>.png
+       character/face/<名字>.png
+
+   这里的常量只改一处，其他地方都用它拼路径。
+   ============================================== */
+
+const CHAR_DIR = 'character/';
+const WALK_DIR = CHAR_DIR + 'walk/';
+const FACE_DIR = CHAR_DIR + 'face/';
+
+/* 主图路径：探测到 character/idle.png 就用它，否则用根目录的 sans.png */
+let IDLE_SRC = 'sans.png';
+let SLEEP_SRC = CHAR_DIR + 'sleep.png';
+let sleepImgOK = false;
+
+function probeCharacter() {
+  const main = new Image();
+  main.onload = function () {
+    IDLE_SRC = CHAR_DIR + 'idle.png';
+    const pet = $('#pet');
+    if (pet && !asleep && walkDir === 'none') pet.src = IDLE_SRC;
+  };
+  main.onerror = function () { IDLE_SRC = 'sans.png'; };
+  main.src = CHAR_DIR + 'idle.png';
+
+  const slp = new Image();
+  slp.onload = function () { sleepImgOK = true; };
+  slp.onerror = function () { sleepImgOK = false; };
+  slp.src = SLEEP_SRC;
+}
+
 /* ================= 待机表情 =================
 
    待机时会隔一阵子换个表情（wink / blink / look），持续 10 秒后复原。
@@ -183,7 +219,7 @@ function probeFaces() {
     const img = new Image();
     img.onload = function () { faceOK[name] = true; };
     img.onerror = function () { faceOK[name] = false; };
-    img.src = 'face/' + name + '.png';
+    img.src = FACE_DIR + name + '.png';
   });
 }
 
@@ -201,10 +237,10 @@ function showExpression() {
 
   const pet = $('#pet');
   if (!pet) return;
-  pet.src = 'face/' + pick(names) + '.png';
+  pet.src = FACE_DIR + pick(names) + '.png';
 
   setTimeout(function () {
-    if (walkDir === 'none' && !asleep) pet.src = 'sans.png';
+    if (walkDir === 'none' && !asleep) pet.src = IDLE_SRC;
   }, FACE_HOLD_MS);
 }
 
@@ -217,22 +253,13 @@ function scheduleExpression() {
   }, delay);
 }
 
-/* 有没有专用的睡觉图（assets/sans_sleep.png） */
-let sleepImgOK = false;
-
-function probeSleepImage() {
-  const img = new Image();
-  img.onload = function () { sleepImgOK = true; };
-  img.onerror = function () { sleepImgOK = false; };
-  img.src = 'sans_sleep.png';
-}
 
 function probeWalkFrames() {
   ['down', 'left', 'right', 'up'].forEach(function (dir) {
     const img = new Image();
     img.onload = function () { walkOK[dir] = true; };
     img.onerror = function () { walkOK[dir] = false; };
-    img.src = 'walk/' + dir + '_0.png';
+    img.src = WALK_DIR + dir + '_0.png';
   });
 }
 
@@ -246,20 +273,20 @@ window.__setWalk = function (dir) {
 
   if (dir === 'none') {
     pet.classList.remove('walking');
-    pet.src = 'sans.png';
+    pet.src = IDLE_SRC;
     return;
   }
 
   pet.classList.add('walking');
   if (walkOK[dir]) {
     let f = 0;
-    pet.src = 'walk/' + dir + '_0.png';
+    pet.src = WALK_DIR + dir + '_0.png';
     walkTimer = setInterval(function () {
       f = (f + 1) % 4;
-      pet.src = 'walk/' + dir + '_' + f + '.png';
+      pet.src = WALK_DIR + dir + '_' + f + '.png';
     }, 150);
   } else {
-    pet.src = 'sans.png';
+    pet.src = IDLE_SRC;
   }
 };
 
@@ -1111,7 +1138,7 @@ setInterval(proactiveTick, 45000);
 window.addEventListener('load', function () {
   loadPresets();
   probeWalkFrames();
-  probeSleepImage();
+  probeCharacter();
   probeFaces();
   scheduleExpression();
   initAudio();
