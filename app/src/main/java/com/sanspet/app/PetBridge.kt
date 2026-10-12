@@ -69,6 +69,12 @@ class PetBridge(
         store.clearMessages()
     }
 
+    /** 清空历史后通知悬浮窗刷新（设置页和桌宠是两个 WebView） */
+    @JavascriptInterface
+    fun notifyHistoryCleared() {
+        main.post { overlay?.notifyHistoryCleared() }
+    }
+
     // ---------- 悬浮窗 ----------
 
 

@@ -6,10 +6,9 @@ const FIELDS = [
   ['baseUrl', 'https://api.deepseek.com/v1'],
   ['apiKey', ''],
   ['model', 'deepseek-flash'],
-  ['temperature', '0.8'],
   ['userName', ''],
-  ['systemPrompt', ''],
-  ['userPersona', ''],
+  ['systemPrompt', (window.__PERSONA && window.__PERSONA.append) || ''],
+  ['userPersona', (window.__PERSONA && window.__PERSONA.user) || ''],
   ['petScale', '1'],
   ['contextLimit', '50'],
   ['proactiveRate', '0.08'],
@@ -26,6 +25,7 @@ function loadSettings() {
   refreshCount();
   refreshPermission();
   refreshToggle();
+  refreshPromptView();
 }
 
 function saveSettings() {
@@ -37,6 +37,25 @@ function saveSettings() {
   B.setSetting('proactive', $('#proactive').checked ? '1' : '0');
   try { B.refreshPet(); } catch (e) {}
   B.toast('已保存');
+}
+
+/* 把内置人设和「实际发给模型的完整提示词」显示出来，方便查看 */
+function refreshPromptView() {
+  const builtin = $('#builtinPrompt');
+  if (builtin) builtin.value = (window.__PERSONA && window.__PERSONA.builtin) || '（读不到内置人设）';
+
+  const full = $('#fullPrompt');
+  if (!full) return;
+  const parts = [];
+  parts.push('【内置人设】');
+  parts.push((window.__PERSONA && window.__PERSONA.builtin) || '');
+  const extra = ($('#systemPrompt') && $('#systemPrompt').value || '').trim();
+  if (extra) { parts.push(''); parts.push('【追加提示词】'); parts.push(extra); }
+  const name = ($('#userName') && $('#userName').value || '').trim();
+  if (name) { parts.push(''); parts.push('用户名字：' + name); }
+  const persona = ($('#userPersona') && $('#userPersona').value || '').trim();
+  if (persona) { parts.push(''); parts.push('关于用户：' + persona); }
+  full.value = parts.join('\n');
 }
 
 function refreshCount() {
@@ -91,16 +110,26 @@ $('#btnToggle').addEventListener('click', function () {
 });
 
 $('#btnClear').addEventListener('click', function () {
-  if (confirm('确定清空全部对话历史？')) {
-    B.clearMessages();
-    refreshCount();
-  }
+  if (!confirm('确定清空全部对话历史？\n会同时清空上下文记忆，Sans 将不再记得之前聊过什么。')) return;
+  B.clearMessages();          // 清空聊天记录
+  try { B.notifyHistoryCleared(); } catch (e) {}   // 通知悬浮窗刷新，并丢掉上下文
+  B.toast('已清空对话历史和上下文记忆');
+  refreshCount();
+  refreshPromptView();
 });
 
 $('#btnResetPrompt').addEventListener('click', function () {
   $('#systemPrompt').value = '';
   B.setSetting('systemPrompt', '');
-  B.toast('已恢复默认人设');
+  B.setSetting('userPersona', '');
+  $('#userPersona').value = '';
+  refreshPromptView();
+  B.toast('已清空追加内容，回到内置人设');
+});
+
+['#systemPrompt', '#userName', '#userPersona'].forEach(function (sel) {
+  const el = $(sel);
+  if (el) el.addEventListener('input', refreshPromptView);
 });
 
 document.addEventListener('visibilitychange', function () {

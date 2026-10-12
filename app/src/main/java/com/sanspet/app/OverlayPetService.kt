@@ -107,6 +107,8 @@ class OverlayPetService : Service() {
                 javaScriptEnabled = true
                 domStorageEnabled = true
                 allowFileAccess = true
+                @Suppress("DEPRECATION")
+                allowFileAccessFromFileURLs = true   // 让 overlay.js 能读 presets.json
                 mediaPlaybackRequiresUserGesture = false
             }
             addJavascriptInterface(bridge, "SansPet")
@@ -283,6 +285,13 @@ class OverlayPetService : Service() {
     fun savePosition() {
         store.set(KEY_X, posX.toString())
         store.set(KEY_Y, posY.toString())
+    }
+
+    /** 设置页清空了历史，通知悬浮窗把面板刷新、上下文丢掉 */
+    fun notifyHistoryCleared() {
+        webView.evaluateJavascript(
+            "window.__onHistoryCleared && window.__onHistoryCleared()", null
+        )
     }
 
     fun refresh() {

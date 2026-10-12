@@ -34,6 +34,7 @@
     },
     countMessages: () => read().length,
     clearMessages: () => localStorage.removeItem(K),
+    notifyHistoryCleared: () => {},
 
     setExpanded: () => {},
     setAnchor: () => {},

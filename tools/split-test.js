@@ -1,6 +1,5 @@
 /* SansPet 分段规则测试
- * 用法： node tools/split-test.js
- * 规则来自 app/src/main/assets/overlay.js（下面这段与它保持一致）
+ * 双击 tools\分段测试.bat 即可运行，不用懂命令
  */
 /* ================= 分段规则 =================
 
@@ -123,7 +122,7 @@ function splitSentences(text) {
 }
 
 
-/* ---------------- 测试用例 ---------------- */
+/* ---------------- 展示 ---------------- */
 
 function units(s) { let n = 0; for (const c of s) n += charUnits(c); return n; }
 
@@ -147,7 +146,7 @@ show('7. 单个省略号：不该断', '嗯…我懂了。');
 console.log('');
 console.log('【二、换行 / 空行】');
 show('8. 单个换行：断', '第一行\n第二行');
-show('9. 空行：只断一次，不吐出空句子', '第一行\n\n\n第二行');
+show('9. 空行：只断一次，不吐空句子', '第一行\n\n\n第二行');
 
 console.log('');
 console.log('【三、中英混合与字数】');
@@ -155,6 +154,20 @@ show('10. 半角英文：1 单位', 'OK, I see you. Fine.');
 show('11. 长英文：按空格断，不切单词', 'This is a fairly long English sentence that should be broken at word boundaries instead of cutting any word in half.');
 show('12. 长中文：按 30 字断', '这是一段很长的中文用来测试字数截断的规则是否按照三十个中文字符来切分并且不会把标点符号弄丢');
 show('13. 中英混合：英文不切词', '帮你写一个 React component that fetches data from the API and renders a list of items for the user');
-show('14. 中文里的空格：不该当英文词边界', '这里 中间有个空格 但是整句话很短 所以不该被切开');
-show('15. 中英混合超长：优先在逗号断', '帮我看看这个 React component，它需要从 API 拉数据但是每次都会报错，我怀疑是 useEffect 的依赖数组写错了，你看看是不是这样');
+show('14. 中文里的空格：不该被切开', '这里 中间有个空格 但是整句话很短 所以不该被切开');
+show('15. 中英混合超长：在逗号处断', '帮我看看这个 React component，它需要从 API 拉数据但是每次都会报错，我怀疑是 useEffect 的依赖数组写错了，你看看是不是这样');
 
+/* ---------------- 试自己的句子 ---------------- */
+
+const readline = require('readline');
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+
+function ask() {
+  rl.question('\n粘贴一句话试试（直接回车就退出）:\n> ', function (ans) {
+    if (!ans || !ans.trim()) { rl.close(); return; }
+    show('你的输入', ans);
+    ask();
+  });
+}
+
+if (process.stdin.isTTY) ask();

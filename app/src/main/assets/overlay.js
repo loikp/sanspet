@@ -2,7 +2,8 @@
 
 const $ = (s) => document.querySelector(s);
 
-const DEFAULT_PROMPT = [
+/* 内置人设：优先用 persona.js（由 prompt/内置人设.txt 生成） */
+const BUILTIN_FALLBACK = [
   '你是 Sans，一个住在用户手机桌面上的角色。',
   '你不是 AI 助手，不要说自己是 AI、语言模型或程序。',
   '',
@@ -19,8 +20,12 @@ const DEFAULT_PROMPT = [
   '回复长度：默认 1-2 句，用户要求解释时可以变长。'
 ].join('\n');
 
+/* 内置人设：优先用 persona.js（由 prompt/内置人设.txt 生成），读不到才用上面的兜底 */
+const DEFAULT_PROMPT =
+  (window.__PERSONA && window.__PERSONA.builtin) || BUILTIN_FALLBACK.join('\n');
+
 /* 戳一戳的预设语句：按「一小时内被戳多少次」分层 */
-const POKE_TIERS = [
+let POKE_TIERS = [
   {
     max: 2,
     hint: '他才刚开始戳你，语气亲切、随意，像老朋友打招呼。',
@@ -74,8 +79,58 @@ const POKE_TIERS = [
   }
 ];
 
+/* ---------------- 预设对话：从 presets.json 读 ----------------
+
+   读不到就用上面内置的兜底，不会白屏。
+   以后接状态机，用 presetLines(触发, 状态, 情绪) 按优先级取话。
+   ------------------------------------------------------------ */
+
+let PRESETS = null;
+
+function loadPresets() {
+  try {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', 'presets.json', true);
+    xhr.onload = function () {
+      if (xhr.status !== 200 && xhr.status !== 0) return;
+      try {
+        const p = JSON.parse(xhr.responseText);
+        if (!p) return;
+        PRESETS = p;
+        const t = p.triggers || {};
+        if (t.poke && t.poke.byCount && t.poke.byCount.length) {
+          POKE_TIERS = t.poke.byCount;
+        }
+        if (t.proactive && t.proactive.lines && t.proactive.lines.length) {
+          PROACTIVE = t.proactive.lines;
+        }
+      } catch (e) {}
+    };
+    xhr.send();
+  } catch (e) {}
+}
+
+/* 按 触发 → 状态 → 情绪 的顺序取预设语句，取不到返回 null */
+function presetLines(triggerName, stateName, moodName) {
+  const P = PRESETS;
+  if (!P) return null;
+  if (triggerName && P.triggers && P.triggers[triggerName] &&
+      P.triggers[triggerName].lines && P.triggers[triggerName].lines.length) {
+    return P.triggers[triggerName].lines;
+  }
+  if (stateName && P.states && P.states[stateName] &&
+      P.states[stateName].lines && P.states[stateName].lines.length) {
+    return P.states[stateName].lines;
+  }
+  if (moodName && P.moods && P.moods[moodName] &&
+      P.moods[moodName].lines && P.moods[moodName].lines.length) {
+    return P.moods[moodName].lines;
+  }
+  return null;
+}
+
 /* 没有配 API Key 时，主动回复用的预设 */
-const PROACTIVE = [
+let PROACTIVE = [
   '……你已经很久没理我了。',
   '嘿，还在吗？',
   '别一个人憋着，说说话吧。',
@@ -255,6 +310,15 @@ function applyPetScale() {
 window.__applySettings = function () { applyPetScale(); };
 window.__screen = function () { setTimeout(refresh, 60); };
 window.__petPos = function () {};
+
+/* 设置页清了历史，通知悬浮窗刷新 */
+window.__onHistoryCleared = function () {
+  history.offset = 0;
+  history.done = false;
+  history.loading = false;
+  const box = $('#historyList');
+  if (box) box.innerHTML = '<div class="history-empty">还没有对话。</div>';
+};
 
 window.__suppressClick = function () {
   suppressClick = true;
@@ -583,12 +647,20 @@ function recentContext(limit) {
     .map(function (m) { return { role: m.role, content: m.content }; });
 }
 
+/* 系统提示词 = 内置人设 + 用户追加内容 + 用户名 + 用户人设
+   追加内容只做「增加」，不会覆盖内置人设 */
 function buildSystemPrompt() {
-  let base = S('systemPrompt', '') || DEFAULT_PROMPT;
+  let base = DEFAULT_PROMPT;
+
+  const extra = (S('systemPrompt', '') || '').trim();
+  if (extra) base += '\n\n【额外设定】\n' + extra;
+
   const name = (S('userName', '') || '').trim();
   if (name) base += '\n\n用户名字：' + name;
+
   const persona = (S('userPersona', '') || '').trim();
   if (persona) base += '\n\n关于用户：' + persona;
+
   return base;
 }
 
@@ -604,7 +676,6 @@ function buildPayload(userText, hint) {
     baseUrl: S('baseUrl', 'https://api.deepseek.com/v1'),
     apiKey: S('apiKey', ''),
     model: S('model', 'deepseek-flash'),
-    temperature: parseFloat(S('temperature', '0.8')) || 0.8,
     messages: messages
   };
 }
@@ -614,6 +685,10 @@ function sendMessage() {
   const text = (input.value || '').trim();
   if (!text || busy) return;
   input.value = '';
+
+  // 先拼请求（此时这条还没进历史，避免同一条被发两遍），再写历史
+  const payload = buildPayload(text);
+
   addHistory('user', text);
   dialogQueue = [];
   showDialog('...');
@@ -630,7 +705,7 @@ function sendMessage() {
     }
   };
   try {
-    B.chat(JSON.stringify(buildPayload(text)), cbId);
+    B.chat(JSON.stringify(payload), cbId);
   } catch (e) {
     delete pendingCb[cbId];
     busy = false;
@@ -793,6 +868,7 @@ $('#historyList').addEventListener('scroll', function () {
 setInterval(proactiveTick, 45000);
 
 window.addEventListener('load', function () {
+  loadPresets();
   initAudio();
   applyPetScale();
   setTimeout(refresh, 100);
