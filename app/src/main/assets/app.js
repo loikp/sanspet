@@ -13,13 +13,6 @@ const FIELDS = [
   ['contextLimit', '50'],
   ['proactiveRate', '0.08'],
   ['pokeLlmRate', '0.5'],
-  ['sleepAfterMinutes', '10'],
-  ['sleepChance', '0.3'],
-  ['walkMinMinutes', '3'],
-  ['walkMaxMinutes', '10'],
-  ['walkChance', '0.6'],
-  ['walkChainChance', '0.35'],
-  ['walkChainDecay', '0.5']
 ];
 
 function loadSettings() {
@@ -30,7 +23,6 @@ function loadSettings() {
   $('#sound').checked = B.getSetting('sound', '1') === '1';
   $('#proactive').checked = B.getSetting('proactive', '1') === '1';
   $('#walkEnabled').checked = B.getSetting('walkEnabled', '0') === '1';
-  toggleWalkOpts();
   $('#lockPosition').checked = B.getSetting('lockPosition', '0') === '1';
 
   const mode = B.getSetting('chatMode', 'ai');
@@ -94,14 +86,13 @@ function refreshPermission() {
   el.className = ok ? 'ok' : 'bad';
 }
 
-/* 只有开了随机走动才显示详细参数 */
-function toggleWalkOpts() {
-  const box = $('#walkOpts');
-  if (!box) return;
-  box.classList.toggle('hidden', !$('#walkEnabled').checked);
-}
-
-$('#walkEnabled').addEventListener('change', toggleWalkOpts);
+/* 随机走动 和 锁定位置 互斥：只能选一个，或者都不选 */
+$('#walkEnabled').addEventListener('change', function () {
+  if (this.checked) $('#lockPosition').checked = false;
+});
+$('#lockPosition').addEventListener('change', function () {
+  if (this.checked) $('#walkEnabled').checked = false;
+});
 
 /* 接口没填全时提示会强制用纯预设 */
 function refreshAiWarn() {

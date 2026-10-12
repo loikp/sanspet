@@ -74,9 +74,6 @@ class OverlayPetService : Service() {
     /** 锁定位置：锁上之后不能拖动、也不能自己走 */
     private var locked = false
 
-    /** 是否清醒。睡着时不走动、也不主动说话 */
-    private var awake = true
-
     /** 走 / 站的调度器，以及当前朝向（给网页切序列帧用） */
     private val walkHandler = Handler(Looper.getMainLooper())
     private var walkDirName = "none"
@@ -143,7 +140,7 @@ class OverlayPetService : Service() {
         bridge.attach(webView)
         attachDragHandler()
         attachTouchRegion()
-        scheduleNextWalk()
+        startStateMachine()
 
         params = buildParams()
         applyPosition()
@@ -244,72 +241,142 @@ class OverlayPetService : Service() {
         }
     }
 
-    // ---------- 随机走动 ----------
+    // ================= 状态机 =================
     //
-    // 不是一直走，而是：
-    //   每隔 [walkMinMs, walkMaxMs] 随机一段时间 → 掷一次概率 walkChance
-    //   命中才走一次；方向、长度都随机
-    //   撞墙 → 掉头走完剩余长度
-    //   走完有 nextChainChance 概率连走下一次，概率按 chainDecay 逐次递减
-    //     （第2次 = chainChance，第3次 = chainChance×decay，第4次再乘…）
+    //  三种状态：待机 / 走动 / 睡觉
+    //
+    //  待机 → 走动 或 睡觉
+    //  走动 → 只能回待机（走动中绝不可能睡着）
+    //  睡觉 → 只能被「戳」回待机（走动中绝不可能睡着）
+    //
+    //  每 30 秒检查一次：
+    //    待机时：
+    //      1. 先看睡觉：距上次互动 >= 10 分钟 且 随机 < 0.2  → 睡
+    //      2. 再看走动：距上次互动 <  10 分钟 且 距上次走动 >= 冷却 且 随机 < 0.6 → 走
+    //    走动结束 → 回待机，重置走动冷却，并把睡觉计时重新从 10 分钟算
+    //    睡觉中 → 只有「戳」能唤醒
+    // ==========================================
+
+    private val ST_IDLE = 0
+    private val ST_WALKING = 1
+    private val ST_SLEEPING = 2
+    private var state = ST_IDLE
+
+    private val TICK_MS = 30000L
+    private val SLEEP_AFTER_MS = 10 * 60 * 1000L
+    private val SLEEP_CHANCE = 0.2
+    private val WALK_MIN_MS = 3 * 60 * 1000L
+    private val WALK_MAX_MS = 10 * 60 * 1000L
+    private val MOVE_CHANCE = 0.6
+    private val CHAIN_CHANCE = 0.35
+    private val CHAIN_DECAY = 0.5
 
     private var walkEnabled = false
-    private var walkMinMs = 3 * 60 * 1000L
-    private var walkMaxMs = 10 * 60 * 1000L
-    private var walkChance = 0.6
-    private var chainChance = 0.35
-    private var chainDecay = 0.5
+    private var lastInteractionAt = System.currentTimeMillis()
+    private var walkReadyAt = 0L
+    private var chainChanceNext = 0.0
 
     private var moving = false
     private var moveDX = 0
     private var moveDY = 0
     private var moveRemaining = 0.0
-    private var nextChainChance = 0.0
 
-    private val walkTrigger = object : Runnable {
+    private val stateTick = object : Runnable {
         override fun run() {
-            if (!walkEnabled) return
-            if (!awake || locked || centered || dragging) {
-                scheduleNextWalk()
-                return
-            }
-            if (Math.random() < walkChance) {
-                nextChainChance = chainChance
-                startMove()
-            } else {
-                scheduleNextWalk()
-            }
+            checkState()
+            walkHandler.postDelayed(this, TICK_MS)
         }
     }
 
     private val moveStep = object : Runnable {
         override fun run() {
             if (!moving) return
-            if (!walkEnabled || !awake || locked || centered || dragging) {
-                endMove(false)
-                return
-            }
+            if (state != ST_WALKING) { finishMove(false); return }
             stepMoveOnce()
             if (moving) walkHandler.postDelayed(this, 50)
         }
     }
 
-    private fun scheduleNextWalk() {
-        walkHandler.removeCallbacks(walkTrigger)
-        if (!walkEnabled) return
-        val span = (walkMaxMs - walkMinMs).coerceAtLeast(0L)
-        val delay = walkMinMs + (Math.random() * span).toLong()
-        walkHandler.postDelayed(walkTrigger, delay)
+    private fun startStateMachine() {
+        walkHandler.removeCallbacks(stateTick)
+        walkHandler.postDelayed(stateTick, TICK_MS)
     }
 
+    private fun resetWalkCooldown() {
+        val span = (WALK_MAX_MS - WALK_MIN_MS).coerceAtLeast(0L)
+        walkReadyAt = System.currentTimeMillis() + WALK_MIN_MS + (Math.random() * span).toLong()
+    }
+
+    private fun checkState() {
+        when (state) {
+            ST_IDLE -> {
+                val idleMs = System.currentTimeMillis() - lastInteractionAt
+
+                // 1. 睡觉优先（更稀缺的状态先判）
+                if (idleMs >= SLEEP_AFTER_MS) {
+                    if (Math.random() < SLEEP_CHANCE) {
+                        enterSleep()
+                    }
+                    return
+                }
+
+                // 2. 走动
+                if (walkEnabled && !locked && !centered && !dragging &&
+                    System.currentTimeMillis() >= walkReadyAt &&
+                    Math.random() < MOVE_CHANCE) {
+                    chainChanceNext = CHAIN_CHANCE
+                    startMove()
+                }
+            }
+            ST_WALKING -> {
+                // 走动由 moveStep 推进，结束时会自己回待机
+            }
+            ST_SLEEPING -> {
+                // 只能靠「戳」醒来，这里不做任何事
+            }
+        }
+    }
+
+    private fun enterSleep() {
+        state = ST_SLEEPING
+        moving = false
+        setWalkVisual("none")
+        webView.evaluateJavascript("window.__onSleep && window.__onSleep()", null)
+    }
+
+    /** 被戳醒 / 主动唤醒 */
+    fun wakeUp() {
+        if (state != ST_SLEEPING) return
+        state = ST_IDLE
+        lastInteractionAt = System.currentTimeMillis()
+        resetWalkCooldown()
+        webView.evaluateJavascript("window.__onWake && window.__onWake()", null)
+    }
+
+    /** 任何互动（戳、聊天、按按钮）都会重置睡觉计时 */
+    fun markInteraction() {
+        lastInteractionAt = System.currentTimeMillis()
+    }
+
+    /** 戳一下：睡着就醒，醒着只算互动 */
+    fun pokePet() {
+        if (state == ST_SLEEPING) {
+            wakeUp()
+        } else {
+            markInteraction()
+        }
+    }
+
+    // ---------- 移动 ----------
+
     private fun startMove() {
+        state = ST_WALKING
         when ((Math.random() * 4).toInt()) {
             0 -> { moveDX = -1; moveDY = 0 }
             1 -> { moveDX = 1; moveDY = 0 }
             2 -> { moveDX = 0; moveDY = -1 }
             else -> { moveDX = 0; moveDY = 1 }
         }
-        // 长度：60dp ~ 220dp 之间随机
         moveRemaining = dp(60) + Math.random() * dp(160)
         moving = true
         setWalkVisual(dirName())
@@ -317,14 +384,12 @@ class OverlayPetService : Service() {
         walkHandler.postDelayed(moveStep, 50)
     }
 
-    /** 走一小步 */
     private fun stepMoveOnce() {
         val minX = dp(60)
         val maxX = (screenW - dp(60)).coerceAtLeast(minX)
         val minY = dp(90)
         val maxY = (screenH - dp(70)).coerceAtLeast(minY)
 
-        // 已经贴墙就先掉头
         if (moveDX < 0 && posX <= minX) moveDX = 1
         if (moveDX > 0 && posX >= maxX) moveDX = -1
         if (moveDY < 0 && posY <= minY) moveDY = 1
@@ -336,7 +401,6 @@ class OverlayPetService : Service() {
         if (moveDX != 0) {
             val target = posX + moveDX * want
             if (target < minX) {
-                // 撞墙：走到墙，剩下多少掉头接着走
                 moveRemaining -= (posX - minX)
                 posX = minX
                 moveDX = -moveDX
@@ -367,20 +431,25 @@ class OverlayPetService : Service() {
         applyPosition()
         setWalkVisual(dirName())
 
-        if (moveRemaining <= 0.5) endMove(true)
+        if (moveRemaining <= 0.5) finishMove(true)
     }
 
-    private fun endMove(allowChain: Boolean) {
+    /** 一次移动结束：回待机，重置冷却和睡觉计时；按概率连走 */
+    private fun finishMove(allowChain: Boolean) {
         moving = false
         setWalkVisual("none")
-        if (allowChain && nextChainChance > 0.01 && Math.random() < nextChainChance) {
-            // 连走：下一次的概率逐次递减
-            nextChainChance *= chainDecay
+        state = ST_IDLE
+        lastInteractionAt = System.currentTimeMillis()
+        resetWalkCooldown()
+
+        if (allowChain && chainChanceNext > 0.01 && Math.random() < chainChanceNext) {
+            chainChanceNext *= CHAIN_DECAY
+            state = ST_WALKING
+            moving = true
             startMove()
-        } else {
-            nextChainChance = 0.0
-            scheduleNextWalk()
+            return
         }
+        chainChanceNext = 0.0
     }
 
     private fun dirName(): String = when {
@@ -396,7 +465,6 @@ class OverlayPetService : Service() {
         walkDirName = name
         webView.evaluateJavascript("window.__setWalk && window.__setWalk('$name')", null)
     }
-
 
     // ---------- 网页上报 ----------
 
@@ -425,39 +493,27 @@ class OverlayPetService : Service() {
         applyPosition()
     }
 
-    /** 设置页传来的走动参数（JSON） */
+    /** 设置页同步开关：只关心「随机走动」开不开，参数是固定的 */
     fun setWalkConfig(json: String) {
         try {
             val o = JSONObject(json)
             walkEnabled = o.optBoolean("enabled", false)
-            val mn = o.optDouble("minMinutes", 3.0)
-            val mx = o.optDouble("maxMinutes", 10.0)
-            walkMinMs = (mn * 60000).toLong().coerceAtLeast(5000L)
-            walkMaxMs = (mx * 60000).toLong().coerceAtLeast(walkMinMs)
-            walkChance = o.optDouble("chance", 0.6).coerceIn(0.0, 1.0)
-            chainChance = o.optDouble("chainChance", 0.35).coerceIn(0.0, 1.0)
-            chainDecay = o.optDouble("chainDecay", 0.5).coerceIn(0.05, 1.0)
         } catch (_: Exception) {
         }
 
-        if (!walkEnabled) {
-            moving = false
-            setWalkVisual("none")
-            walkHandler.removeCallbacksAndMessages(null)
-        } else {
-            scheduleNextWalk()
+        if (!walkEnabled && state == ST_WALKING) {
+            finishMove(false)
         }
+        if (!walkEnabled) setWalkVisual("none")
     }
 
+    /** 锁定位置：锁上后不能拖动，也不能自己走 */
     fun setLocked(value: Boolean) {
         locked = value
+        if (value && state == ST_WALKING) finishMove(false)
         if (value) setWalkVisual("none")
     }
 
-    fun setAwake(value: Boolean) {
-        awake = value
-        if (!value) setWalkVisual("none")
-    }
 
     fun setCentered(value: Boolean) {
         if (centered == value) return

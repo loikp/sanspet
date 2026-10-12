@@ -36,26 +36,8 @@ html, body.overlay {
 /* 行走中：不做浮动动画，动感由序列帧自己表现 */
 #pet.walking { animation: none; }
 
-/* 睡觉中：用 opacity 而不是 filter —— filter 在透明悬浮窗上很吃性能，会卡 */
-body.sleeping #pet { opacity: 0.65; }
-
-/* 睡觉时飘的 Zzz */
-#zzz {
-  position: absolute;
-  left: 0;
-  right: 0;
-  margin: 0 auto;
-  bottom: 200px;
-  width: max-content;
-  font-family: var(--font-ui);
-  font-size: 16px;
-  color: var(--white);
-  text-shadow: 2px 2px 0 #000;
-  z-index: 70;
-  opacity: 0.9;
-}
-
-body:not(.sleeping) #zzz { display: none; }
+/* 睡觉中：把角色图压暗，和清醒状态区分开 */
+body.sleeping #pet { filter: brightness(0.55) saturate(0.6); }
 
 /* ---------------- 按钮：宠物正下方居中 ---------------- */
 

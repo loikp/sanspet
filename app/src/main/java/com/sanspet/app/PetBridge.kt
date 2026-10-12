@@ -119,9 +119,16 @@ class PetBridge(
         main.post { overlay?.setLocked(value) }
     }
 
+    /** 戳一下：睡着就醒，醒着只算一次互动 */
     @JavascriptInterface
-    fun setAwake(value: Boolean) {
-        main.post { overlay?.setAwake(value) }
+    fun pokePet() {
+        main.post { (overlay ?: OverlayPetService.instance)?.pokePet() }
+    }
+
+    /** 任何互动（聊天、按按钮）都重置睡觉计时 */
+    @JavascriptInterface
+    fun markInteraction() {
+        main.post { (overlay ?: OverlayPetService.instance)?.markInteraction() }
     }
 
     @JavascriptInterface

@@ -76,45 +76,36 @@ function nowText() {
    被戳 → 醒（拖动不会，因为拖动不会触发点击）
    ============================================ */
 
+/* 状态机在原生那边跑，网页只负责「表现 + 说话」 */
+
 let asleep = false;
-let lastInteraction = Date.now();
 
-function setAsleep(v) {
-  if (asleep === v) return;
-  asleep = v;
-  document.body.classList.toggle('sleeping', v);
-  try { B.setAwake(!v); } catch (e) {}
-}
-
-function fallAsleep() {
-  setAsleep(true);
+window.__onSleep = function () {
+  asleep = true;
+  document.body.classList.add('sleeping');
   const lines = (PRESETS && PRESETS.states && PRESETS.states.sleeping &&
                  PRESETS.states.sleeping.lines) || ['……', 'Zzz'];
   speak(pick(lines));
-}
+};
 
-function wakeUp() {
-  setAsleep(false);
+window.__onWake = function () {
+  asleep = false;
+  document.body.classList.remove('sleeping');
   const lines = (PRESETS && PRESETS.states && PRESETS.states.waking &&
                  PRESETS.states.waking.lines) || ['……嗯？'];
   speak(pick(lines));
-}
+};
 
-function markInteraction() {
-  lastInteraction = Date.now();
-  if (asleep) wakeUp();
-}
+/* 梦话：睡着时每 3 分钟掷一次，15% 概率说一句 */
+let sleepTalkTimer = null;
 
-function sleepTick() {
-  if (asleep) {
+function startSleepTalk() {
+  if (sleepTalkTimer) return;
+  sleepTalkTimer = setInterval(function () {
+    if (!asleep || typing || busy) return;
     const lines = (PRESETS && PRESETS.sleepTalk && PRESETS.sleepTalk.lines) || null;
     if (lines && lines.length && Math.random() < 0.15) speak(pick(lines));
-    return;
-  }
-  const mins = parseFloat(S('sleepAfterMinutes', '10')) || 10;
-  const chance = parseFloat(S('sleepChance', '0.3'));
-  if (Date.now() - lastInteraction < mins * 60000) return;
-  if (Math.random() < (isNaN(chance) ? 0.3 : chance)) fallAsleep();
+  }, 3 * 60 * 1000);
 }
 
 /* ================= 行走序列帧 =================
@@ -446,23 +437,14 @@ function applyPetScale() {
 
 /* 把走动参数打包推给原生 */
 function pushWalkConfig() {
-  try {
-    B.setWalkConfig(JSON.stringify({
-      enabled: S('walkEnabled', '0') === '1',
-      minMinutes: parseFloat(S('walkMinMinutes', '3')) || 3,
-      maxMinutes: parseFloat(S('walkMaxMinutes', '10')) || 10,
-      chance: parseFloat(S('walkChance', '0.6')),
-      chainChance: parseFloat(S('walkChainChance', '0.35')),
-      chainDecay: parseFloat(S('walkChainDecay', '0.5'))
-    }));
-  } catch (e) {}
+  // 参数固定：间隔 3~10 分钟、移动概率 0.6、连走 0.35、递减 0.5
+  try { B.setWalkConfig(JSON.stringify({ enabled: S('walkEnabled', '0') === '1' })); } catch (e) {}
 }
 
 window.__applySettings = function () {
   applyPetScale();
   pushWalkConfig();
   try { B.setLocked(S('lockPosition', '0') === '1'); } catch (e) {}
-  try { B.setAwake(!asleep); } catch (e) {}
 };
 window.__screen = function () { setTimeout(refresh, 60); };
 window.__petPos = function () {};
@@ -846,7 +828,7 @@ function sendMessage() {
   const text = (input.value || '').trim();
   if (!text || busy) return;
   input.value = '';
-  markInteraction();
+  try { B.markInteraction(); } catch (e) {}
 
   // 纯预设模式：不请求接口，直接按关键词回预设
   if (!useAi()) {
@@ -973,16 +955,16 @@ let lastTapAt = 0;
 $('#pet').addEventListener('click', function () {
   if (suppressClick) return;
 
-  // 睡着的时候：戳一下就醒（拖动不会触发这里，所以拖动不醒）
-  if (asleep) {
-    markInteraction();
-    return;
-  }
+  // 先告诉原生「我被戳了」——睡着的话原生会把我唤醒
+  // （拖动不会触发这里，所以拖动不醒）
+  try { B.pokePet(); } catch (e) {}
+
+  // 睡着时这一下只用来唤醒，不做别的
+  if (asleep) return;
 
   // 正在打字 / 正在等回复：不响应
   if (typing || busy) return;
 
-  markInteraction();
   clearTimeout(autoTimer);
 
   // 1. 还有没说完的句子 → 显示下一句
@@ -1049,16 +1031,12 @@ $('#historyList').addEventListener('scroll', function () {
 
 setInterval(proactiveTick, 45000);
 
-let sleepTimer = null;
-
 window.addEventListener('load', function () {
   loadPresets();
   probeWalkFrames();
   initAudio();
 
-  // 状态机：每 30 秒检查一次该不该睡、要不要说梦话
-  if (sleepTimer) clearInterval(sleepTimer);
-  sleepTimer = setInterval(sleepTick, 30000);
+  startSleepTalk();
 
   // 启动时把行走/锁定状态推给原生
   pushWalkConfig();
