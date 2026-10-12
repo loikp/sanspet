@@ -47,7 +47,7 @@
     setExpanded: () => {},
     setAnchor: () => {},
     setWindowSize: () => {},
-    setWalkEnabled: () => {},
+    setWalkConfig: () => {},
     setLocked: () => {},
     setAwake: () => {},
     setCentered: () => {},

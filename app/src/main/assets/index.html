@@ -107,6 +107,25 @@
   <input id="petScale" type="number" min="0.8" max="1.8" step="0.1">
   <div class="checkbox"><input id="walkEnabled" type="checkbox"><label for="walkEnabled" style="margin:0">随机走动（过一会儿自己溜达）</label></div>
   <div class="checkbox"><input id="lockPosition" type="checkbox"><label for="lockPosition" style="margin:0">锁定位置（锁上后不能拖动，也不走动）</label></div>
+
+  <div id="walkOpts" class="hidden">
+    <label>走动间隔（分钟）：最短 / 最长</label>
+    <div class="row" style="margin-top:0">
+      <input id="walkMinMinutes" type="number" min="0.2" max="120" step="0.5" style="flex:1">
+      <input id="walkMaxMinutes" type="number" min="0.2" max="180" step="0.5" style="flex:1">
+    </div>
+    <label>到点时真的移动的概率（0 - 1）</label>
+    <input id="walkChance" type="number" min="0" max="1" step="0.05">
+    <label>连着再走一次的概率（0 - 1）</label>
+    <input id="walkChainChance" type="number" min="0" max="1" step="0.05">
+    <label>连走概率的递减系数（0 - 1）</label>
+    <input id="walkChainDecay" type="number" min="0.05" max="1" step="0.05">
+    <div class="hint">
+      例：连走概率 0.35、递减 0.5 →<br>
+      第 2 次 35%，第 3 次 17.5%，第 4 次 8.75%…… 每多一次减半。<br>
+      撞到屏幕边缘会掉头，把剩下的距离走完。
+    </div>
+  </div>
 </section>
 
 <section>

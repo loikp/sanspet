@@ -24,6 +24,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
+import org.json.JSONObject
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -68,10 +69,7 @@ class OverlayPetService : Service() {
     /** 历史面板打开时把窗口挪到屏幕正中央（面板铺满窗口，于是面板就在屏幕正中） */
     private var centered = false
 
-    // ---------- 随机走动 / 锁定 / 睡眠 ----------
-
-    /** 随机走动开关（设置页控制） */
-    private var walkEnabled = false
+    // ---------- 锁定 / 睡眠 / 走动的公共状态 ----------
 
     /** 锁定位置：锁上之后不能拖动、也不能自己走 */
     private var locked = false
@@ -79,12 +77,9 @@ class OverlayPetService : Service() {
     /** 是否清醒。睡着时不走动、也不主动说话 */
     private var awake = true
 
+    /** 走 / 站的调度器，以及当前朝向（给网页切序列帧用） */
     private val walkHandler = Handler(Looper.getMainLooper())
-    private var walkRunnable: Runnable? = null
-    private var walkDX = 0
-    private var walkDY = 1
     private var walkDirName = "none"
-    private var nextTurnAt = 0L
 
     private var dragging = false
     private var dragMoved = false
@@ -148,7 +143,7 @@ class OverlayPetService : Service() {
         bridge.attach(webView)
         attachDragHandler()
         attachTouchRegion()
-        startWalkLoop()
+        scheduleNextWalk()
 
         params = buildParams()
         applyPosition()
@@ -250,73 +245,149 @@ class OverlayPetService : Service() {
     }
 
     // ---------- 随机走动 ----------
+    //
+    // 不是一直走，而是：
+    //   每隔 [walkMinMs, walkMaxMs] 随机一段时间 → 掷一次概率 walkChance
+    //   命中才走一次；方向、长度都随机
+    //   撞墙 → 掉头走完剩余长度
+    //   走完有 nextChainChance 概率连走下一次，概率按 chainDecay 逐次递减
+    //     （第2次 = chainChance，第3次 = chainChance×decay，第4次再乘…）
 
-    private fun startWalkLoop() {
-        if (walkRunnable != null) return
-        val r = object : Runnable {
-            override fun run() {
-                stepWalk()
-                walkHandler.postDelayed(this, 50)
+    private var walkEnabled = false
+    private var walkMinMs = 3 * 60 * 1000L
+    private var walkMaxMs = 10 * 60 * 1000L
+    private var walkChance = 0.6
+    private var chainChance = 0.35
+    private var chainDecay = 0.5
+
+    private var moving = false
+    private var moveDX = 0
+    private var moveDY = 0
+    private var moveRemaining = 0.0
+    private var nextChainChance = 0.0
+
+    private val walkTrigger = object : Runnable {
+        override fun run() {
+            if (!walkEnabled) return
+            if (!awake || locked || centered || dragging) {
+                scheduleNextWalk()
+                return
+            }
+            if (Math.random() < walkChance) {
+                nextChainChance = chainChance
+                startMove()
+            } else {
+                scheduleNextWalk()
             }
         }
-        walkRunnable = r
-        walkHandler.postDelayed(r, 50)
     }
 
-    /**
-     * 走一步。
-     * 范围 = 能拖动的范围再往内收 30dp，撞到边界就反向。
-     */
-    private fun stepWalk() {
-        if (!added) return
+    private val moveStep = object : Runnable {
+        override fun run() {
+            if (!moving) return
+            if (!walkEnabled || !awake || locked || centered || dragging) {
+                endMove(false)
+                return
+            }
+            stepMoveOnce()
+            if (moving) walkHandler.postDelayed(this, 50)
+        }
+    }
 
-        if (!walkEnabled || !awake || locked || dragging || centered) {
-            setWalkVisual("none")
-            return
+    private fun scheduleNextWalk() {
+        walkHandler.removeCallbacks(walkTrigger)
+        if (!walkEnabled) return
+        val span = (walkMaxMs - walkMinMs).coerceAtLeast(0L)
+        val delay = walkMinMs + (Math.random() * span).toLong()
+        walkHandler.postDelayed(walkTrigger, delay)
+    }
+
+    private fun startMove() {
+        when ((Math.random() * 4).toInt()) {
+            0 -> { moveDX = -1; moveDY = 0 }
+            1 -> { moveDX = 1; moveDY = 0 }
+            2 -> { moveDX = 0; moveDY = -1 }
+            else -> { moveDX = 0; moveDY = 1 }
+        }
+        // 长度：60dp ~ 220dp 之间随机
+        moveRemaining = dp(60) + Math.random() * dp(160)
+        moving = true
+        setWalkVisual(dirName())
+        walkHandler.removeCallbacks(moveStep)
+        walkHandler.postDelayed(moveStep, 50)
+    }
+
+    /** 走一小步 */
+    private fun stepMoveOnce() {
+        val minX = dp(60)
+        val maxX = (screenW - dp(60)).coerceAtLeast(minX)
+        val minY = dp(90)
+        val maxY = (screenH - dp(70)).coerceAtLeast(minY)
+
+        // 已经贴墙就先掉头
+        if (moveDX < 0 && posX <= minX) moveDX = 1
+        if (moveDX > 0 && posX >= maxX) moveDX = -1
+        if (moveDY < 0 && posY <= minY) moveDY = 1
+        if (moveDY > 0 && posY >= maxY) moveDY = -1
+
+        val stepPx = dp(3).toDouble()
+        val want = minOf(stepPx, moveRemaining)
+
+        if (moveDX != 0) {
+            val target = posX + moveDX * want
+            if (target < minX) {
+                // 撞墙：走到墙，剩下多少掉头接着走
+                moveRemaining -= (posX - minX)
+                posX = minX
+                moveDX = -moveDX
+            } else if (target > maxX) {
+                moveRemaining -= (maxX - posX)
+                posX = maxX
+                moveDX = -moveDX
+            } else {
+                posX = target.toInt()
+                moveRemaining -= want
+            }
+        } else {
+            val target = posY + moveDY * want
+            if (target < minY) {
+                moveRemaining -= (posY - minY)
+                posY = minY
+                moveDY = -moveDY
+            } else if (target > maxY) {
+                moveRemaining -= (maxY - posY)
+                posY = maxY
+                moveDY = -moveDY
+            } else {
+                posY = target.toInt()
+                moveRemaining -= want
+            }
         }
 
-        val inset = dp(30)
-        val minX = dp(30) + inset
-        val maxX = (screenW - dp(30) - inset).coerceAtLeast(minX)
-        val minY = dp(60) + inset
-        val maxY = (screenH - dp(40) - inset).coerceAtLeast(minY)
-
-        // 过一会儿随机换个方向
-        val now = System.currentTimeMillis()
-        if (now > nextTurnAt) {
-            nextTurnAt = now + 4000 + (Math.random() * 5000).toLong()
-            if (Math.random() < 0.5) pickNewDirection()
-        }
-
-        val step = dp(3)
-        var nx = posX + walkDX * step
-        var ny = posY + walkDY * step
-
-        if (nx <= minX) { nx = minX; walkDX = -walkDX }
-        if (nx >= maxX) { nx = maxX; walkDX = -walkDX }
-        if (ny <= minY) { ny = minY; walkDY = -walkDY }
-        if (ny >= maxY) { ny = maxY; walkDY = -walkDY }
-
-        posX = nx
-        posY = ny
         applyPosition()
         setWalkVisual(dirName())
+
+        if (moveRemaining <= 0.5) endMove(true)
     }
 
-    private fun pickNewDirection() {
-        when ((Math.random() * 4).toInt()) {
-            0 -> { walkDX = -1; walkDY = 0 }
-            1 -> { walkDX = 1; walkDY = 0 }
-            2 -> { walkDX = 0; walkDY = -1 }
-            else -> { walkDX = 0; walkDY = 1 }
+    private fun endMove(allowChain: Boolean) {
+        moving = false
+        setWalkVisual("none")
+        if (allowChain && nextChainChance > 0.01 && Math.random() < nextChainChance) {
+            // 连走：下一次的概率逐次递减
+            nextChainChance *= chainDecay
+            startMove()
+        } else {
+            nextChainChance = 0.0
+            scheduleNextWalk()
         }
     }
 
     private fun dirName(): String = when {
-        walkDX < 0 -> "left"
-        walkDX > 0 -> "right"
-        walkDY < 0 -> "up"
-        walkDY > 0 -> "down"
+        moveDX < 0 -> "left"
+        moveDX > 0 -> "right"
+        moveDY < 0 -> "up"
+        moveDY > 0 -> "down"
         else -> "none"
     }
 
@@ -325,6 +396,7 @@ class OverlayPetService : Service() {
         walkDirName = name
         webView.evaluateJavascript("window.__setWalk && window.__setWalk('$name')", null)
     }
+
 
     // ---------- 网页上报 ----------
 
@@ -353,10 +425,28 @@ class OverlayPetService : Service() {
         applyPosition()
     }
 
-    fun setWalkEnabled(value: Boolean) {
-        walkEnabled = value
-        if (!value) setWalkVisual("none")
-        if (value) nextTurnAt = 0L
+    /** 设置页传来的走动参数（JSON） */
+    fun setWalkConfig(json: String) {
+        try {
+            val o = JSONObject(json)
+            walkEnabled = o.optBoolean("enabled", false)
+            val mn = o.optDouble("minMinutes", 3.0)
+            val mx = o.optDouble("maxMinutes", 10.0)
+            walkMinMs = (mn * 60000).toLong().coerceAtLeast(5000L)
+            walkMaxMs = (mx * 60000).toLong().coerceAtLeast(walkMinMs)
+            walkChance = o.optDouble("chance", 0.6).coerceIn(0.0, 1.0)
+            chainChance = o.optDouble("chainChance", 0.35).coerceIn(0.0, 1.0)
+            chainDecay = o.optDouble("chainDecay", 0.5).coerceIn(0.05, 1.0)
+        } catch (_: Exception) {
+        }
+
+        if (!walkEnabled) {
+            moving = false
+            setWalkVisual("none")
+            walkHandler.removeCallbacksAndMessages(null)
+        } else {
+            scheduleNextWalk()
+        }
     }
 
     fun setLocked(value: Boolean) {
@@ -541,8 +631,7 @@ class OverlayPetService : Service() {
     }
 
     override fun onDestroy() {
-        walkRunnable?.let { walkHandler.removeCallbacks(it) }
-        walkRunnable = null
+        walkHandler.removeCallbacksAndMessages(null)
         isRunning = false
         if (instance === this) instance = null
         savePosition()

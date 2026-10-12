@@ -33,16 +33,11 @@ html, body.overlay {
   50% { transform: translateY(-6px) scale(1.03); }
 }
 
-/* 行走中：如果有序列帧就换图，没有就用轻微上下动代替 */
-#pet.walking { animation: walkBob 0.4s ease-in-out infinite; }
+/* 行走中：不做浮动动画，动感由序列帧自己表现 */
+#pet.walking { animation: none; }
 
-@keyframes walkBob {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-3px); }
-}
-
-/* 睡觉中：变暗一点 */
-body.sleeping #pet { filter: brightness(0.72) saturate(0.6); }
+/* 睡觉中：用 opacity 而不是 filter —— filter 在透明悬浮窗上很吃性能，会卡 */
+body.sleeping #pet { opacity: 0.65; }
 
 /* 睡觉时飘的 Zzz */
 #zzz {
@@ -57,13 +52,7 @@ body.sleeping #pet { filter: brightness(0.72) saturate(0.6); }
   color: var(--white);
   text-shadow: 2px 2px 0 #000;
   z-index: 70;
-  animation: zzzFloat 2.6s ease-in-out infinite;
-}
-
-@keyframes zzzFloat {
-  0%   { opacity: 0; transform: translateY(6px); }
-  35%  { opacity: 1; }
-  100% { opacity: 0; transform: translateY(-16px); }
+  opacity: 0.9;
 }
 
 body:not(.sleeping) #zzz { display: none; }

@@ -109,8 +109,9 @@ class PetBridge(
     }
 
     @JavascriptInterface
-    fun setWalkEnabled(value: Boolean) {
-        main.post { overlay?.setWalkEnabled(value) }
+    fun setWalkConfig(json: String?) {
+        val s = json ?: "{}"
+        main.post { (overlay ?: OverlayPetService.instance)?.setWalkConfig(s) }
     }
 
     @JavascriptInterface

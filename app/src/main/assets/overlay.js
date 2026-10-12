@@ -444,11 +444,24 @@ function applyPetScale() {
   setTimeout(refresh, 60);
 }
 
+/* 把走动参数打包推给原生 */
+function pushWalkConfig() {
+  try {
+    B.setWalkConfig(JSON.stringify({
+      enabled: S('walkEnabled', '0') === '1',
+      minMinutes: parseFloat(S('walkMinMinutes', '3')) || 3,
+      maxMinutes: parseFloat(S('walkMaxMinutes', '10')) || 10,
+      chance: parseFloat(S('walkChance', '0.6')),
+      chainChance: parseFloat(S('walkChainChance', '0.35')),
+      chainDecay: parseFloat(S('walkChainDecay', '0.5'))
+    }));
+  } catch (e) {}
+}
+
 window.__applySettings = function () {
   applyPetScale();
-  // 把「随机走动 / 锁定位置」推给原生
-  try { B.setWalkEnabled(S('walkEnabled', '0') === '1'); } catch (e) {}
-  try { B.setLocked(S('lockPosition', '1') === '1'); } catch (e) {}
+  pushWalkConfig();
+  try { B.setLocked(S('lockPosition', '0') === '1'); } catch (e) {}
   try { B.setAwake(!asleep); } catch (e) {}
 };
 window.__screen = function () { setTimeout(refresh, 60); };
@@ -1048,8 +1061,8 @@ window.addEventListener('load', function () {
   sleepTimer = setInterval(sleepTick, 30000);
 
   // 启动时把行走/锁定状态推给原生
-  try { B.setWalkEnabled(S('walkEnabled', '0') === '1'); } catch (e) {}
-  try { B.setLocked(S('lockPosition', '1') === '1'); } catch (e) {}
+  pushWalkConfig();
+  try { B.setLocked(S('lockPosition', '0') === '1'); } catch (e) {}
   applyPetScale();
   setTimeout(refresh, 100);
   setTimeout(refresh, 400);
