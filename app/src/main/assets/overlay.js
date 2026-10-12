@@ -40,6 +40,42 @@ function useAi() {
   return S('chatMode', 'ai') !== 'preset';
 }
 
+/* ================= 互动触发：走 AI 还是走预设 =================
+
+   戳一戳 / 睡着 / 醒来 / 主动开口，全都用同一个概率（设置页那个滑块）。
+   0 = 全用预设，1 = 全走 AI。
+   接口没配好、或对话模式选了「纯预设」→ 一律走预设。
+   ============================================================ */
+
+function aiChance() {
+  if (!useAi()) return 0;
+  const v = parseFloat(S('pokeLlmRate', '0.5'));
+  return isNaN(v) ? 0.5 : Math.max(0, Math.min(1, v));
+}
+
+function wantsAi() {
+  return Math.random() < aiChance();
+}
+
+/* 互动统一入口：按概率决定让 AI 现场生成，还是直接说预设 */
+function interactSpeak(userText, hint, presetLines) {
+  if (wantsAi()) {
+    busy = true;
+    showDialog('...');
+    aiAsk(userText, hint, function (r) {
+      busy = false;
+      if (r.ok && r.content) {
+        addHistory('assistant', r.content);
+        speak(r.content);
+      } else if (presetLines && presetLines.length) {
+        speak(pick(presetLines));
+      }
+    });
+  } else if (presetLines && presetLines.length) {
+    speak(pick(presetLines));
+  }
+}
+
 /* 纯预设对话：拿用户的话去匹配关键词，命中用对应语句，没命中随机 */
 function presetReply(text) {
   const P = PRESETS;
@@ -89,7 +125,9 @@ window.__onSleep = function () {
   }
   const lines = (PRESETS && PRESETS.states && PRESETS.states.sleeping &&
                  PRESETS.states.sleeping.lines) || ['……', 'Zzz'];
-  speak(pick(lines));
+  interactSpeak('（你困得睡着了）',
+    '你刚刚睡着了。用一句很短的话当作睡前嘀咕，不超过 15 个字。只输出你要说的话，不要解释、不要旁白。',
+    lines);
 };
 
 window.__onWake = function () {
@@ -99,7 +137,9 @@ window.__onWake = function () {
   if (pet) pet.src = 'sans.png';
   const lines = (PRESETS && PRESETS.states && PRESETS.states.waking &&
                  PRESETS.states.waking.lines) || ['……嗯？'];
-  speak(pick(lines));
+  interactSpeak('（用户把你戳醒了）',
+    '你刚被戳醒，迷迷糊糊的。用一句很短的话回应，不超过 15 个字。只输出你要说的话，不要解释、不要旁白。',
+    lines);
 };
 
 /* 梦话：睡着时每 3 分钟掷一次，15% 概率说一句 */
@@ -902,29 +942,10 @@ window.__sansCallback = function (id, resultJson) {
 function pokeOnce() {
   const count = recordTap();
   const tier = tierFor(count);
-  let rate = parseFloat(S('pokeLlmRate', '0.5'));
-  if (isNaN(rate)) rate = 0.5;
-
-  const useLlm = useAi() && Math.random() < rate;
-  if (!useLlm) {
-    speak(pick(tier.lines));
-    return;
-  }
-
-  busy = true;
-  showDialog('...');
   const hint = '用户刚刚戳了你一下。最近一小时内，他总共戳了你 ' + count + ' 次（包含刚才这次）。' +
                tier.hint +
                '\n\n现在用一句很短的话回应他，不超过 20 个字。只输出你要说的话，不要解释、不要旁白。';
-  aiAsk('（用户戳了你一下）', hint, function (r) {
-    busy = false;
-    if (r.ok && r.content) {
-      addHistory('assistant', r.content);
-      speak(r.content);
-    } else {
-      speak(pick(tier.lines));
-    }
-  });
+  interactSpeak('（用户戳了你一下）', hint, tier.lines);
 }
 
 /* 主动回复：没 Key 用预设；有 Key 就让模型顺着之前的话题追问 */
@@ -938,26 +959,11 @@ function proactiveTick() {
   const rate = parseFloat(S('proactiveRate', '0.08')) || 0;
   if (Math.random() >= rate) return;
 
-  if (!useAi()) {
-    const lines = presetLines('proactive') || PROACTIVE;
-    speak(pick(lines));
-    return;
-  }
-
-  busy = true;
-  const hint = '现在你决定主动开口。' +
-               '如果之前聊过什么，就顺着那个话题追问一句（比如问后来怎么样了、有没有好转）；' +
-               '如果没什么可追问的，就说一句日常的关心。' +
-               '\n\n不超过 25 个字。只输出你要说的话，不要解释、不要旁白。';
-  aiAsk('（你决定主动开口）', hint, function (r) {
-    busy = false;
-    if (r.ok && r.content) {
-      addHistory('assistant', r.content);
-      speak(r.content);
-    } else {
-      speak(pick(PROACTIVE));
-    }
-  });
+  const lines = presetLines('proactive') || PROACTIVE;
+  interactSpeak('（你决定主动开口）',
+    '现在你决定主动开口。如果之前聊过什么，就顺着那个话题追问一句（比如问后来怎么样了、有没有好转）；' +
+    '如果没什么可追问的，就说一句日常的关心。不超过 25 个字。只输出你要说的话，不要解释、不要旁白。',
+    lines);
 }
 
 /* ---------------- 事件 ---------------- */

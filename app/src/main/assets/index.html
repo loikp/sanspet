@@ -47,12 +47,12 @@
     <button id="btnPerm" class="brutal-btn orange">授予悬浮窗权限</button>
     <button id="btnToggle" class="brutal-btn blue">开启桌宠</button>
   </div>
-  <div class="hint">开启后回到桌面就能看到 Sans。第一次需要先去系统设置里允许本应用显示在其他应用上层。</div>
+  <div class="hint">初次使用需要先去系统设置里允许本应用显示在其他应用上层。</div>
 </section>
 
 <section>
   <h2>AI 接口</h2>
-  <label>Base URL（支持 OPENAI 兼容格式）</label>
+  <label>Base URL（支持 OPEN AI 兼容格式）</label>
   <input id="baseUrl" type="text" placeholder="https://api.deepseek.com/v1">
   <label>API Key</label>
   <div class="row" style="margin-top:0">
@@ -93,7 +93,7 @@
     <textarea id="builtinPrompt" readonly style="margin-top:10px;color:#aaa"></textarea>
   </details>
   <details style="margin-top:10px">
-    <summary style="cursor:pointer;color:var(--yellow);font-size:13px">查看实际发给模型的完整提示词</summary>
+    <summary style="cursor:pointer;color:var(--yellow);font-size:13px">查看实际发给模型的完整提示词（只读）</summary>
     <textarea id="fullPrompt" readonly style="margin-top:10px;color:#aaa;min-height:220px"></textarea>
   </details>
   <div class="row">
@@ -121,8 +121,8 @@
     </label>
   </div>
   <div class="hint">
-    · <b>纯预设</b>：从 presets.json 里按关键词找回答，没命中就随机。不联网、不花钱。<br>
-    · <b>AI 对话</b>：把你的话发给模型生成回答。<br>
+    · <b>纯预设</b>：关键词触发回答，没命中就随机。不联网、不花钱。<br>
+    · <b>AI 对话</b>：把你的话发给云端大语言模型生成回答。<br>
     · 两者互斥。Base URL / API Key / 模型 没填全时，会强制用纯预设。
   </div>
   <div id="aiModeWarn" class="hint" style="color:#ff5c5c"></div>
@@ -141,10 +141,9 @@
   <label>触发概率（每次检查）</label>
   <input id="proactiveRate" type="number" min="0" max="1" step="0.01">
   <div class="hint">每 45 秒检查一次，概率越低越安静。</div>
-  <label>戳一戳走 AI 的概率（0 - 1）</label>
+  <label>互动触发 AI 回复的概率（0~1）</label>
   <input id="pokeLlmRate" type="number" min="0" max="1" step="0.05">
-  <div class="hint">没配 API Key 时这项无效，一律用预设语句。1 = 每次都让 AI 回，0 = 只用预设。</div>
-  <div class="hint">每 30 秒检查一次。不理它太久会睡着，睡着后偶尔说梦话，<b>戳一下会醒</b>（拖动不会）。</div>
+  <div class="hint">戳一戳、睡着、醒来、主动开口，都按这个概率决定走 AI 还是用预设。没配好接口时一律用预设。1 = 全部走 AI，0 = 全部用预设。</div>
 </section>
 
 <section>
