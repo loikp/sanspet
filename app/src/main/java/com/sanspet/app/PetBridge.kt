@@ -61,6 +61,13 @@ class PetBridge(
     @JavascriptInterface
     fun getMessages(offset: Int, limit: Int): String = store.getMessages(offset, limit)
 
+    /** 上下文记忆（发给模型用的那份），与对话历史分开 */
+    @JavascriptInterface
+    fun getMemory(offset: Int, limit: Int): String = store.getMemory(offset, limit)
+
+    @JavascriptInterface
+    fun countMemory(): Int = store.countMemory()
+
     @JavascriptInterface
     fun countMessages(): Int = store.countMessages()
 
@@ -73,6 +80,12 @@ class PetBridge(
     @JavascriptInterface
     fun notifyHistoryCleared() {
         main.post { overlay?.notifyHistoryCleared() }
+    }
+
+    /** 只清上下文记忆，不动对话历史 */
+    @JavascriptInterface
+    fun clearMemory() {
+        store.clearMemory()
     }
 
     // ---------- 悬浮窗 ----------

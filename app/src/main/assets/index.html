@@ -83,13 +83,13 @@
   <h2>角色人设</h2>
   <label>你的名字（选填）</label>
   <input id="userName" type="text" placeholder="留空的话 Sans 不会叫你名字">
-  <label>追加提示词（接在内置人设后面）</label>
+  <label>追加提示词（选填，接在内置人设后面）</label>
   <textarea id="systemPrompt" placeholder="这里写的内容会【追加】在内置人设后面，不会覆盖它。留空就只用内置人设。"></textarea>
   <label>用户人设（选填）</label>
   <textarea id="userPersona" placeholder="描述一下你自己，比如「我是学生，喜欢打游戏，最近在准备考试」。留空则不发送。"></textarea>
 
   <details style="margin-top:14px">
-    <summary style="cursor:pointer;color:var(--yellow);font-size:13px">查看内置 Sans 人设（只读，要改请在电脑上改 prompt/内置人设.txt）</summary>
+    <summary style="cursor:pointer;color:var(--yellow);font-size:13px">查看内置 Sans 人设（只读）</summary>
     <textarea id="builtinPrompt" readonly style="margin-top:10px;color:#aaa"></textarea>
   </details>
   <details style="margin-top:10px">
@@ -126,14 +126,19 @@
 </section>
 
 <section>
-  <h2>对话历史</h2>
-
+  <h2>对话历史与记忆</h2>
+  <div class="hint">
+    这两个是分开的：<br>
+    · <b>记忆</b> = 每次发给模型的最近对话，决定 Sans 还记不记得聊过什么<br>
+    · <b>对话历史</b> = 你在历史窗口里能翻到的记录
+  </div>
   <div class="row">
-    <button id="btnClear" class="brutal-btn orange">清空全部历史</button>
+    <button id="btnClearMemory" class="brutal-btn blue">清除记忆</button>
+    <button id="btnClear" class="brutal-btn orange">清空对话历史</button>
   </div>
 </section>
 
-<div class="row">
+<div class="row" style="justify-content:center">
   <button id="btnSave" class="brutal-btn blue" style="min-width:150px">保存设置</button>
 </div>
 <div class="hint" style="text-align:center;margin-top:10px">配置会在重启桌宠后生效。</div>

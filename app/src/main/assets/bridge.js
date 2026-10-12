@@ -33,6 +33,14 @@
       return JSON.stringify(out);
     },
     countMessages: () => read().length,
+    getMemory: (offset, limit) => {
+      const arr = read();
+      const out = [];
+      for (let i = arr.length - 1 - offset; i >= 0 && out.length < limit; i--) out.push(arr[i]);
+      return JSON.stringify(out);
+    },
+    countMemory: () => read().length,
+    clearMemory: () => {},
     clearMessages: () => localStorage.removeItem(K),
     notifyHistoryCleared: () => {},
 

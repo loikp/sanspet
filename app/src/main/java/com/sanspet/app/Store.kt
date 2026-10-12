@@ -5,8 +5,16 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * 本地存储：设置 / 记忆 / 完整聊天记录。
- * 用 SharedPreferences 存 JSON，V1 够用，之后可换 Room。
+ * 本地存储。
+ *
+ * 有两份「对话数据」，故意分开存放：
+ *
+ *   messages  对话历史 —— 用户能在「对话历史」窗口里翻到的全部记录
+ *   memory    上下文记忆 —— 每次请求发给模型的最近 N 条
+ *
+ * 正常发消息时两份都会写；但用户可以单独清掉其中一份：
+ *   清空对话历史 → 只清 messages，模型还记得之前聊过什么
+ *   清除记忆     → 只清 memory，历史记录还留着，但模型失忆
  */
 class Store(context: Context) {
 
@@ -19,22 +27,39 @@ class Store(context: Context) {
         sp.edit().putString(key, value).apply()
     }
 
+    // ---------- 写入 ----------
+
+    /** 写一条消息：历史和记忆同时写 */
     @Synchronized
     fun addMessage(json: String) {
-        val arr = JSONArray(get(KEY_MESSAGES, "[]"))
+        append(KEY_MESSAGES, json)
+        append(KEY_MEMORY, json)
+    }
+
+    @Synchronized
+    private fun append(key: String, json: String) {
+        val arr = JSONArray(get(key, "[]"))
         arr.put(JSONObject(json))
         val trimmed = if (arr.length() > MAX_MESSAGES) {
             val out = JSONArray()
             for (i in arr.length() - MAX_MESSAGES until arr.length()) out.put(arr.get(i))
             out
         } else arr
-        sp.edit().putString(KEY_MESSAGES, trimmed.toString()).apply()
+        sp.edit().putString(key, trimmed.toString()).apply()
     }
+
+    // ---------- 读取 ----------
 
     /** 从最新往旧分页取，offset=0 是最新一条 */
     @Synchronized
-    fun getMessages(offset: Int, limit: Int): String {
-        val arr = JSONArray(get(KEY_MESSAGES, "[]"))
+    fun getMessages(offset: Int, limit: Int): String = page(KEY_MESSAGES, offset, limit)
+
+    @Synchronized
+    fun getMemory(offset: Int, limit: Int): String = page(KEY_MEMORY, offset, limit)
+
+    @Synchronized
+    private fun page(key: String, offset: Int, limit: Int): String {
+        val arr = JSONArray(get(key, "[]"))
         val out = JSONArray()
         var i = arr.length() - 1 - offset
         var n = 0
@@ -49,13 +74,25 @@ class Store(context: Context) {
     @Synchronized
     fun countMessages(): Int = JSONArray(get(KEY_MESSAGES, "[]")).length()
 
+    @Synchronized
+    fun countMemory(): Int = JSONArray(get(KEY_MEMORY, "[]")).length()
+
+    // ---------- 清除 ----------
+
+    /** 只清对话历史，不动上下文记忆 */
     fun clearMessages() {
         sp.edit().remove(KEY_MESSAGES).apply()
+    }
+
+    /** 只清上下文记忆，不动对话历史 */
+    fun clearMemory() {
+        sp.edit().remove(KEY_MEMORY).apply()
     }
 
     companion object {
         private const val PREFS = "sanspet"
         private const val KEY_MESSAGES = "messages"
+        private const val KEY_MEMORY = "memory"
         private const val MAX_MESSAGES = 2000
     }
 }

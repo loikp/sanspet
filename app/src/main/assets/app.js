@@ -109,13 +109,20 @@ $('#btnToggle').addEventListener('click', function () {
   setTimeout(refreshToggle, 700);
 });
 
+/* 清空对话历史：只清历史窗口里的记录，记忆保留（Sans 还记得） */
 $('#btnClear').addEventListener('click', function () {
-  if (!confirm('确定清空全部对话历史？\n会同时清空上下文记忆，Sans 将不再记得之前聊过什么。')) return;
-  B.clearMessages();          // 清空聊天记录
-  try { B.notifyHistoryCleared(); } catch (e) {}   // 通知悬浮窗刷新，并丢掉上下文
-  B.toast('已清空对话历史和上下文记忆');
+  if (!confirm('确定清空对话历史？\n只会清空历史窗口的记录，Sans 还记得你们聊过什么。')) return;
+  B.clearMessages();
+  try { B.notifyHistoryCleared(); } catch (e) {}
+  B.toast('已清空对话历史');
   refreshCount();
-  refreshPromptView();
+});
+
+/* 清除记忆：只清发给模型的上下文，历史记录保留（Sans 失忆但记录还在） */
+$('#btnClearMemory').addEventListener('click', function () {
+  if (!confirm('确定清除记忆？\n历史记录会保留，但 Sans 会忘记你们之前聊过什么。')) return;
+  B.clearMemory();
+  B.toast('已清除上下文记忆');
 });
 
 $('#btnResetPrompt').addEventListener('click', function () {

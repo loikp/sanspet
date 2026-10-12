@@ -638,9 +638,11 @@ function closeHistory() {
 
 /* ---------------- 聊天 ---------------- */
 
+/* 发给模型的上下文 = 记忆那一份（不是对话历史那一份）
+   两者分开存，用户可以在设置里单独清掉其一 */
 function recentContext(limit) {
   let arr = [];
-  try { arr = JSON.parse(B.getMessages(0, limit)) || []; } catch (e) {}
+  try { arr = JSON.parse(B.getMemory(0, limit)) || []; } catch (e) {}
   arr.reverse();
   return arr
     .filter(function (m) { return m.role === 'user' || m.role === 'assistant'; })
