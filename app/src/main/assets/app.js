@@ -12,7 +12,9 @@ const FIELDS = [
   ['petScale', '1'],
   ['contextLimit', '50'],
   ['proactiveRate', '0.08'],
-  ['pokeLlmRate', '0.5']
+  ['pokeLlmRate', '0.5'],
+  ['sleepAfterMinutes', '10'],
+  ['sleepChance', '0.3']
 ];
 
 function loadSettings() {
@@ -22,6 +24,14 @@ function loadSettings() {
   });
   $('#sound').checked = B.getSetting('sound', '1') === '1';
   $('#proactive').checked = B.getSetting('proactive', '1') === '1';
+  $('#walkEnabled').checked = B.getSetting('walkEnabled', '0') === '1';
+  $('#lockPosition').checked = B.getSetting('lockPosition', '0') === '1';
+
+  const mode = B.getSetting('chatMode', 'ai');
+  document.querySelectorAll('input[name=chatMode]').forEach(function (r) {
+    r.checked = (r.value === mode);
+  });
+  refreshAiWarn();
   refreshCount();
   refreshPermission();
   refreshToggle();
@@ -35,6 +45,12 @@ function saveSettings() {
   });
   B.setSetting('sound', $('#sound').checked ? '1' : '0');
   B.setSetting('proactive', $('#proactive').checked ? '1' : '0');
+  B.setSetting('walkEnabled', $('#walkEnabled').checked ? '1' : '0');
+  B.setSetting('lockPosition', $('#lockPosition').checked ? '1' : '0');
+
+  const checkedMode = document.querySelector('input[name=chatMode]:checked');
+  if (checkedMode) B.setSetting('chatMode', checkedMode.value);
+  refreshAiWarn();
   try { B.refreshPet(); } catch (e) {}
   B.toast('已保存');
 }
@@ -71,6 +87,36 @@ function refreshPermission() {
   el.textContent = ok ? '已开启' : '未开启';
   el.className = ok ? 'ok' : 'bad';
 }
+
+/* 接口没填全时提示会强制用纯预设 */
+function refreshAiWarn() {
+  const el = $('#aiModeWarn');
+  if (!el) return;
+  const base = ($('#baseUrl').value || '').trim();
+  const key = ($('#apiKey').value || '').trim();
+  const model = ($('#model').value || '').trim();
+  const ready = !!(base && key && model);
+  const checked = document.querySelector('input[name=chatMode]:checked');
+  const mode = checked ? checked.value : 'ai';
+
+  if (!ready) {
+    el.style.color = '#ff5c5c';
+    el.textContent = '⚠ Base URL / API Key / 模型 没填全，当前强制使用「纯预设对话」。';
+  } else if (mode === 'preset') {
+    el.style.color = '#ffe600';
+    el.textContent = '当前：纯预设对话（不联网，不花钱）';
+  } else {
+    el.textContent = '';
+  }
+}
+
+document.querySelectorAll('input[name=chatMode]').forEach(function (r) {
+  r.addEventListener('change', refreshAiWarn);
+});
+['#baseUrl', '#apiKey', '#model'].forEach(function (sel) {
+  const el = $(sel);
+  if (el) el.addEventListener('input', refreshAiWarn);
+});
 
 /* API Key 显示 / 隐藏 */
 $('#btnKeyToggle').addEventListener('click', function () {

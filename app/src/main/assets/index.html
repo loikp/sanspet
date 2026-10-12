@@ -105,6 +105,26 @@
   <h2>外观</h2>
   <label>Sans 大小（0.8 - 1.8）</label>
   <input id="petScale" type="number" min="0.8" max="1.8" step="0.1">
+  <div class="checkbox"><input id="walkEnabled" type="checkbox"><label for="walkEnabled" style="margin:0">随机走动（过一会儿自己溜达）</label></div>
+  <div class="checkbox"><input id="lockPosition" type="checkbox"><label for="lockPosition" style="margin:0">锁定位置（锁上后不能拖动，也不走动）</label></div>
+</section>
+
+<section>
+  <h2>对话模式</h2>
+  <div class="row" style="margin-top:0">
+    <label style="display:flex;align-items:center;gap:6px;margin:0;color:var(--white);font-size:14px">
+      <input type="radio" name="chatMode" value="preset" style="width:18px;height:18px;accent-color:var(--yellow)"> 纯预设对话
+    </label>
+    <label style="display:flex;align-items:center;gap:6px;margin:0;color:var(--white);font-size:14px">
+      <input type="radio" name="chatMode" value="ai" style="width:18px;height:18px;accent-color:var(--yellow)"> AI 对话
+    </label>
+  </div>
+  <div class="hint">
+    · <b>纯预设</b>：从 presets.json 里按关键词找回答，没命中就随机。不联网、不花钱。<br>
+    · <b>AI 对话</b>：把你的话发给模型生成回答。<br>
+    · 两者互斥。Base URL / API Key / 模型 没填全时，会强制用纯预设。
+  </div>
+  <div id="aiModeWarn" class="hint" style="color:#ff5c5c"></div>
 </section>
 
 <section>
@@ -123,6 +143,11 @@
   <label>戳一戳走 AI 的概率（0 - 1）</label>
   <input id="pokeLlmRate" type="number" min="0" max="1" step="0.05">
   <div class="hint">没配 API Key 时这项无效，一律用预设语句。1 = 每次都让 AI 回，0 = 只用预设。</div>
+  <label>多久没理它就可能睡着（分钟）</label>
+  <input id="sleepAfterMinutes" type="number" min="1" max="120" step="1">
+  <label>睡着概率（每次检查）</label>
+  <input id="sleepChance" type="number" min="0" max="1" step="0.1">
+  <div class="hint">每 30 秒检查一次。睡着后偶尔会说梦话，<b>戳一下会醒</b>（拖动不会）。</div>
 </section>
 
 <section>

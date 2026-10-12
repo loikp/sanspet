@@ -109,6 +109,21 @@ class PetBridge(
     }
 
     @JavascriptInterface
+    fun setWalkEnabled(value: Boolean) {
+        main.post { overlay?.setWalkEnabled(value) }
+    }
+
+    @JavascriptInterface
+    fun setLocked(value: Boolean) {
+        main.post { overlay?.setLocked(value) }
+    }
+
+    @JavascriptInterface
+    fun setAwake(value: Boolean) {
+        main.post { overlay?.setAwake(value) }
+    }
+
+    @JavascriptInterface
     fun setCentered(value: Boolean) {
         main.post { overlay?.setCentered(value) }
     }

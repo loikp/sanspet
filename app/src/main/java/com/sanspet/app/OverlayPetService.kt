@@ -12,7 +12,9 @@ import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.Region
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ViewTreeObserver
@@ -65,6 +67,24 @@ class OverlayPetService : Service() {
 
     /** 历史面板打开时把窗口挪到屏幕正中央（面板铺满窗口，于是面板就在屏幕正中） */
     private var centered = false
+
+    // ---------- 随机走动 / 锁定 / 睡眠 ----------
+
+    /** 随机走动开关（设置页控制） */
+    private var walkEnabled = false
+
+    /** 锁定位置：锁上之后不能拖动、也不能自己走 */
+    private var locked = false
+
+    /** 是否清醒。睡着时不走动、也不主动说话 */
+    private var awake = true
+
+    private val walkHandler = Handler(Looper.getMainLooper())
+    private var walkRunnable: Runnable? = null
+    private var walkDX = 0
+    private var walkDY = 1
+    private var walkDirName = "none"
+    private var nextTurnAt = 0L
 
     private var dragging = false
     private var dragMoved = false
@@ -128,6 +148,7 @@ class OverlayPetService : Service() {
         bridge.attach(webView)
         attachDragHandler()
         attachTouchRegion()
+        startWalkLoop()
 
         params = buildParams()
         applyPosition()
@@ -228,6 +249,83 @@ class OverlayPetService : Service() {
         }
     }
 
+    // ---------- 随机走动 ----------
+
+    private fun startWalkLoop() {
+        if (walkRunnable != null) return
+        val r = object : Runnable {
+            override fun run() {
+                stepWalk()
+                walkHandler.postDelayed(this, 50)
+            }
+        }
+        walkRunnable = r
+        walkHandler.postDelayed(r, 50)
+    }
+
+    /**
+     * 走一步。
+     * 范围 = 能拖动的范围再往内收 30dp，撞到边界就反向。
+     */
+    private fun stepWalk() {
+        if (!added) return
+
+        if (!walkEnabled || !awake || locked || dragging || centered) {
+            setWalkVisual("none")
+            return
+        }
+
+        val inset = dp(30)
+        val minX = dp(30) + inset
+        val maxX = (screenW - dp(30) - inset).coerceAtLeast(minX)
+        val minY = dp(60) + inset
+        val maxY = (screenH - dp(40) - inset).coerceAtLeast(minY)
+
+        // 过一会儿随机换个方向
+        val now = System.currentTimeMillis()
+        if (now > nextTurnAt) {
+            nextTurnAt = now + 4000 + (Math.random() * 5000).toLong()
+            if (Math.random() < 0.5) pickNewDirection()
+        }
+
+        val step = dp(3)
+        var nx = posX + walkDX * step
+        var ny = posY + walkDY * step
+
+        if (nx <= minX) { nx = minX; walkDX = -walkDX }
+        if (nx >= maxX) { nx = maxX; walkDX = -walkDX }
+        if (ny <= minY) { ny = minY; walkDY = -walkDY }
+        if (ny >= maxY) { ny = maxY; walkDY = -walkDY }
+
+        posX = nx
+        posY = ny
+        applyPosition()
+        setWalkVisual(dirName())
+    }
+
+    private fun pickNewDirection() {
+        when ((Math.random() * 4).toInt()) {
+            0 -> { walkDX = -1; walkDY = 0 }
+            1 -> { walkDX = 1; walkDY = 0 }
+            2 -> { walkDX = 0; walkDY = -1 }
+            else -> { walkDX = 0; walkDY = 1 }
+        }
+    }
+
+    private fun dirName(): String = when {
+        walkDX < 0 -> "left"
+        walkDX > 0 -> "right"
+        walkDY < 0 -> "up"
+        walkDY > 0 -> "down"
+        else -> "none"
+    }
+
+    private fun setWalkVisual(name: String) {
+        if (name == walkDirName) return
+        walkDirName = name
+        webView.evaluateJavascript("window.__setWalk && window.__setWalk('$name')", null)
+    }
+
     // ---------- 网页上报 ----------
 
     /** 宠物中心相对窗口的偏移，网页量好后只上报一次（或缩放变化时） */
@@ -253,6 +351,22 @@ class OverlayPetService : Service() {
         params.width = winW
         params.height = winH
         applyPosition()
+    }
+
+    fun setWalkEnabled(value: Boolean) {
+        walkEnabled = value
+        if (!value) setWalkVisual("none")
+        if (value) nextTurnAt = 0L
+    }
+
+    fun setLocked(value: Boolean) {
+        locked = value
+        if (value) setWalkVisual("none")
+    }
+
+    fun setAwake(value: Boolean) {
+        awake = value
+        if (!value) setWalkVisual("none")
     }
 
     fun setCentered(value: Boolean) {
@@ -357,7 +471,7 @@ class OverlayPetService : Service() {
                     dragMoved = false
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    if (dragging && !centered) {
+                    if (dragging && !centered && !locked) {
                         val dx = event.rawX - dragStartRawX
                         val dy = event.rawY - dragStartRawY
                         if (!dragMoved && (abs(dx) > slop || abs(dy) > slop)) dragMoved = true
@@ -427,6 +541,8 @@ class OverlayPetService : Service() {
     }
 
     override fun onDestroy() {
+        walkRunnable?.let { walkHandler.removeCallbacks(it) }
+        walkRunnable = null
         isRunning = false
         if (instance === this) instance = null
         savePosition()

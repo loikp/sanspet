@@ -24,6 +24,143 @@ const BUILTIN_FALLBACK = [
 const DEFAULT_PROMPT =
   (window.__PERSONA && window.__PERSONA.builtin) || BUILTIN_FALLBACK.join('\n');
 
+/* ================= 对话模式 =================
+
+   chatMode: 'ai'     = 走接口
+             'preset' = 纯预设（关键词匹配，没命中就随机）
+   接口没配全（Base URL / Key / 模型 任一为空）→ 强制纯预设
+   ============================================ */
+
+function isAiReady() {
+  return !!(S('baseUrl', '').trim() && S('apiKey', '').trim() && S('model', '').trim());
+}
+
+function useAi() {
+  if (!isAiReady()) return false;
+  return S('chatMode', 'ai') !== 'preset';
+}
+
+/* 纯预设对话：拿用户的话去匹配关键词，命中用对应语句，没命中随机 */
+function presetReply(text) {
+  const P = PRESETS;
+  const low = String(text || '').toLowerCase();
+  if (P && P.keywords && P.keywords.rules) {
+    for (let i = 0; i < P.keywords.rules.length; i++) {
+      const r = P.keywords.rules[i];
+      const keys = r.keys || [];
+      for (let k = 0; k < keys.length; k++) {
+        if (low.indexOf(String(keys[k]).toLowerCase()) >= 0) {
+          if (r.lines && r.lines.length) return pick(r.lines);
+        }
+      }
+    }
+  }
+  const fb = (P && P.keywords && P.keywords.fallback) || null;
+  if (fb && fb.length) return pick(fb);
+  return pick(PROACTIVE);
+}
+
+/* ================= 当前时间 ================= */
+
+function nowText() {
+  const d = new Date();
+  const p = function (n) { return n < 10 ? '0' + n : '' + n; };
+  const week = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'][d.getDay()];
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' +
+         p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()) + ' ' + week;
+}
+
+/* ================= 状态机：清醒 / 睡眠 =================
+   太久没人理 → 有概率睡着
+   睡着时 → 隔一会儿有概率说梦话
+   被戳 → 醒（拖动不会，因为拖动不会触发点击）
+   ============================================ */
+
+let asleep = false;
+let lastInteraction = Date.now();
+
+function setAsleep(v) {
+  if (asleep === v) return;
+  asleep = v;
+  document.body.classList.toggle('sleeping', v);
+  try { B.setAwake(!v); } catch (e) {}
+}
+
+function fallAsleep() {
+  setAsleep(true);
+  const lines = (PRESETS && PRESETS.states && PRESETS.states.sleeping &&
+                 PRESETS.states.sleeping.lines) || ['……', 'Zzz'];
+  speak(pick(lines));
+}
+
+function wakeUp() {
+  setAsleep(false);
+  const lines = (PRESETS && PRESETS.states && PRESETS.states.waking &&
+                 PRESETS.states.waking.lines) || ['……嗯？'];
+  speak(pick(lines));
+}
+
+function markInteraction() {
+  lastInteraction = Date.now();
+  if (asleep) wakeUp();
+}
+
+function sleepTick() {
+  if (asleep) {
+    const lines = (PRESETS && PRESETS.sleepTalk && PRESETS.sleepTalk.lines) || null;
+    if (lines && lines.length && Math.random() < 0.15) speak(pick(lines));
+    return;
+  }
+  const mins = parseFloat(S('sleepAfterMinutes', '10')) || 10;
+  const chance = parseFloat(S('sleepChance', '0.3'));
+  if (Date.now() - lastInteraction < mins * 60000) return;
+  if (Math.random() < (isNaN(chance) ? 0.3 : chance)) fallAsleep();
+}
+
+/* ================= 行走序列帧 =================
+   有素材就用 walk/<方向>_<帧>.png（0~3），没有就退回静态图
+   ============================================ */
+
+const walkOK = {};
+let walkDir = 'none';
+let walkTimer = null;
+
+function probeWalkFrames() {
+  ['down', 'left', 'right', 'up'].forEach(function (dir) {
+    const img = new Image();
+    img.onload = function () { walkOK[dir] = true; };
+    img.onerror = function () { walkOK[dir] = false; };
+    img.src = 'walk/' + dir + '_0.png';
+  });
+}
+
+window.__setWalk = function (dir) {
+  if (dir === walkDir) return;
+  walkDir = dir;
+  const pet = $('#pet');
+  if (!pet) return;
+
+  if (walkTimer) { clearInterval(walkTimer); walkTimer = null; }
+
+  if (dir === 'none') {
+    pet.classList.remove('walking');
+    pet.src = 'sans.png';
+    return;
+  }
+
+  pet.classList.add('walking');
+  if (walkOK[dir]) {
+    let f = 0;
+    pet.src = 'walk/' + dir + '_0.png';
+    walkTimer = setInterval(function () {
+      f = (f + 1) % 4;
+      pet.src = 'walk/' + dir + '_' + f + '.png';
+    }, 150);
+  } else {
+    pet.src = 'sans.png';
+  }
+};
+
 /* 戳一戳的预设语句：按「一小时内被戳多少次」分层 */
 let POKE_TIERS = [
   {
@@ -307,7 +444,13 @@ function applyPetScale() {
   setTimeout(refresh, 60);
 }
 
-window.__applySettings = function () { applyPetScale(); };
+window.__applySettings = function () {
+  applyPetScale();
+  // 把「随机走动 / 锁定位置」推给原生
+  try { B.setWalkEnabled(S('walkEnabled', '0') === '1'); } catch (e) {}
+  try { B.setLocked(S('lockPosition', '1') === '1'); } catch (e) {}
+  try { B.setAwake(!asleep); } catch (e) {}
+};
 window.__screen = function () { setTimeout(refresh, 60); };
 window.__petPos = function () {};
 
@@ -663,6 +806,9 @@ function buildSystemPrompt() {
   const persona = (S('userPersona', '') || '').trim();
   if (persona) base += '\n\n关于用户：' + persona;
 
+  // 注入当前时间（设备本地时间，默认北京时间）
+  base += '\n\n【当前时间】\n' + nowText() + '（北京时间）';
+
   return base;
 }
 
@@ -687,6 +833,18 @@ function sendMessage() {
   const text = (input.value || '').trim();
   if (!text || busy) return;
   input.value = '';
+  markInteraction();
+
+  // 纯预设模式：不请求接口，直接按关键词回预设
+  if (!useAi()) {
+    addHistory('user', text);
+    const line = presetReply(text);
+    addHistory('assistant', line);
+    dialogQueue = [];
+    showDialog('...');
+    setTimeout(function () { speak(line); }, 120);
+    return;
+  }
 
   // 先拼请求（此时这条还没进历史，避免同一条被发两遍），再写历史
   const payload = buildPayload(text);
@@ -736,7 +894,7 @@ function pokeOnce() {
   let rate = parseFloat(S('pokeLlmRate', '0.5'));
   if (isNaN(rate)) rate = 0.5;
 
-  const useLlm = hasApiKey() && Math.random() < rate;
+  const useLlm = useAi() && Math.random() < rate;
   if (!useLlm) {
     speak(pick(tier.lines));
     return;
@@ -762,14 +920,16 @@ function pokeOnce() {
 function proactiveTick() {
   if (S('proactive', '1') !== '1') return;
   if (busy || typing) return;
+  if (asleep) return;
   if (historyOpen) return;
   if (Date.now() - lastSpeak < 3 * 60 * 1000) return;
 
   const rate = parseFloat(S('proactiveRate', '0.08')) || 0;
   if (Math.random() >= rate) return;
 
-  if (!hasApiKey()) {
-    speak(pick(PROACTIVE));
+  if (!useAi()) {
+    const lines = presetLines('proactive') || PROACTIVE;
+    speak(pick(lines));
     return;
   }
 
@@ -800,9 +960,16 @@ let lastTapAt = 0;
 $('#pet').addEventListener('click', function () {
   if (suppressClick) return;
 
+  // 睡着的时候：戳一下就醒（拖动不会触发这里，所以拖动不醒）
+  if (asleep) {
+    markInteraction();
+    return;
+  }
+
   // 正在打字 / 正在等回复：不响应
   if (typing || busy) return;
 
+  markInteraction();
   clearTimeout(autoTimer);
 
   // 1. 还有没说完的句子 → 显示下一句
@@ -869,9 +1036,20 @@ $('#historyList').addEventListener('scroll', function () {
 
 setInterval(proactiveTick, 45000);
 
+let sleepTimer = null;
+
 window.addEventListener('load', function () {
   loadPresets();
+  probeWalkFrames();
   initAudio();
+
+  // 状态机：每 30 秒检查一次该不该睡、要不要说梦话
+  if (sleepTimer) clearInterval(sleepTimer);
+  sleepTimer = setInterval(sleepTick, 30000);
+
+  // 启动时把行走/锁定状态推给原生
+  try { B.setWalkEnabled(S('walkEnabled', '0') === '1'); } catch (e) {}
+  try { B.setLocked(S('lockPosition', '1') === '1'); } catch (e) {}
   applyPetScale();
   setTimeout(refresh, 100);
   setTimeout(refresh, 400);
