@@ -162,6 +162,61 @@ const walkOK = {};
 let walkDir = 'none';
 let walkTimer = null;
 
+/* ================= 待机表情 =================
+
+   待机时会隔一阵子换个表情（wink / blink / look），持续 10 秒后复原。
+   素材放 assets/face/<名字>.png，例如：
+       face/wink.png    眨眼
+       face/blink.png   合眼
+       face/look.png    眼睛瞟别处
+   只有真正存在的那几张会被用；一张都没有就什么都不做（占位）。
+
+   触发条件：待机中、没睡觉、没走动、没开着对话框
+   ============================================ */
+
+const FACE_NAMES = ['wink', 'blink', 'look'];
+const faceOK = {};
+const FACE_HOLD_MS = 10000;
+
+function probeFaces() {
+  FACE_NAMES.forEach(function (name) {
+    const img = new Image();
+    img.onload = function () { faceOK[name] = true; };
+    img.onerror = function () { faceOK[name] = false; };
+    img.src = 'face/' + name + '.png';
+  });
+}
+
+function availableFaces() {
+  return FACE_NAMES.filter(function (n) { return faceOK[n]; });
+}
+
+function showExpression() {
+  if (asleep || busy || typing) return;
+  if (walkDir !== 'none') return;
+  if (!$('#dialog').classList.contains('hidden')) return;
+
+  const names = availableFaces();
+  if (!names.length) return;          // 没素材就什么都不做
+
+  const pet = $('#pet');
+  if (!pet) return;
+  pet.src = 'face/' + pick(names) + '.png';
+
+  setTimeout(function () {
+    if (walkDir === 'none' && !asleep) pet.src = 'sans.png';
+  }, FACE_HOLD_MS);
+}
+
+function scheduleExpression() {
+  // 1~3 分钟看一次，30% 概率做个表情
+  const delay = (60 + Math.random() * 120) * 1000;
+  setTimeout(function () {
+    if (Math.random() < 0.3) showExpression();
+    scheduleExpression();
+  }, delay);
+}
+
 /* 有没有专用的睡觉图（assets/sans_sleep.png） */
 let sleepImgOK = false;
 
@@ -1057,6 +1112,8 @@ window.addEventListener('load', function () {
   loadPresets();
   probeWalkFrames();
   probeSleepImage();
+  probeFaces();
+  scheduleExpression();
   initAudio();
 
   startSleepTalk();
