@@ -80,6 +80,7 @@ class OverlayPetService : Service() {
     override fun onCreate() {
         super.onCreate()
         isRunning = true
+        instance = this
         startForegroundNotification()
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
 
@@ -427,6 +428,7 @@ class OverlayPetService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        if (instance === this) instance = null
         savePosition()
         try {
             if (added) wm.removeView(webView)
@@ -441,6 +443,10 @@ class OverlayPetService : Service() {
         /** 桌宠是否正在运行，设置页用它决定按钮显示「开启」还是「关闭」 */
         @Volatile
         var isRunning = false
+
+        /** 当前运行的实例。设置页那个 WebView 的桥拿不到 overlay 引用，靠这个转达消息 */
+        @Volatile
+        var instance: OverlayPetService? = null
 
         private const val ACTION_STOP = "com.sanspet.app.STOP"
         private const val INSETS_FRAME = 0

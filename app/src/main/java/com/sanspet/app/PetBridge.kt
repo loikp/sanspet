@@ -79,7 +79,9 @@ class PetBridge(
     /** 清空历史后通知悬浮窗刷新（设置页和桌宠是两个 WebView） */
     @JavascriptInterface
     fun notifyHistoryCleared() {
-        main.post { overlay?.notifyHistoryCleared() }
+        main.post {
+            (overlay ?: OverlayPetService.instance)?.notifyHistoryCleared()
+        }
     }
 
     /** 只清上下文记忆，不动对话历史 */
