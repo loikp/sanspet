@@ -36,8 +36,14 @@ html, body.overlay {
 /* 行走中：不做浮动动画，动感由序列帧自己表现 */
 #pet.walking { animation: none; }
 
-/* 睡觉中：把角色图压暗，和清醒状态区分开 */
-body.sleeping #pet { filter: brightness(0.55) saturate(0.6); }
+/* 睡觉中：
+   优先换成专用睡觉图 assets/sans_sleep.png（有就自动用）；
+   没有的话就把角色放倒一点 + 稍透明，纯 transform/opacity，零性能开销 */
+body.sleeping #pet {
+  animation: none;
+  transform: rotate(-18deg) translateY(10px);
+  opacity: 0.78;
+}
 
 /* ---------------- 按钮：宠物正下方居中 ---------------- */
 

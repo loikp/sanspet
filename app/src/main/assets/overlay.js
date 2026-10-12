@@ -83,6 +83,10 @@ let asleep = false;
 window.__onSleep = function () {
   asleep = true;
   document.body.classList.add('sleeping');
+  if (sleepImgOK) {
+    const pet = $('#pet');
+    if (pet) pet.src = 'sans_sleep.png';
+  }
   const lines = (PRESETS && PRESETS.states && PRESETS.states.sleeping &&
                  PRESETS.states.sleeping.lines) || ['……', 'Zzz'];
   speak(pick(lines));
@@ -91,6 +95,8 @@ window.__onSleep = function () {
 window.__onWake = function () {
   asleep = false;
   document.body.classList.remove('sleeping');
+  const pet = $('#pet');
+  if (pet) pet.src = 'sans.png';
   const lines = (PRESETS && PRESETS.states && PRESETS.states.waking &&
                  PRESETS.states.waking.lines) || ['……嗯？'];
   speak(pick(lines));
@@ -115,6 +121,16 @@ function startSleepTalk() {
 const walkOK = {};
 let walkDir = 'none';
 let walkTimer = null;
+
+/* 有没有专用的睡觉图（assets/sans_sleep.png） */
+let sleepImgOK = false;
+
+function probeSleepImage() {
+  const img = new Image();
+  img.onload = function () { sleepImgOK = true; };
+  img.onerror = function () { sleepImgOK = false; };
+  img.src = 'sans_sleep.png';
+}
 
 function probeWalkFrames() {
   ['down', 'left', 'right', 'up'].forEach(function (dir) {
@@ -1034,6 +1050,7 @@ setInterval(proactiveTick, 45000);
 window.addEventListener('load', function () {
   loadPresets();
   probeWalkFrames();
+  probeSleepImage();
   initAudio();
 
   startSleepTalk();
