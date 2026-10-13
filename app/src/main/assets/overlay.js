@@ -685,6 +685,22 @@ function applyPetScale() {
   setTimeout(refresh, 60);
 }
 
+/* 把「读屏 / 使用数据」的间隔和概率推给原生（掷骰子在原生那边做） */
+function pushReadConfig() {
+  try {
+    B.setReadConfig(JSON.stringify({
+      screenEnabled: S('screenRead', '0') === '1',
+      screenMin: parseFloat(S('screenMinMinutes', '20')) || 20,
+      screenMax: parseFloat(S('screenMaxMinutes', '40')) || 40,
+      screenChance: parseFloat(S('screenChance', '0.5')),
+      usageEnabled: S('usageRead', '0') === '1',
+      usageMin: parseFloat(S('usageMinMinutes', '15')) || 15,
+      usageMax: parseFloat(S('usageMaxMinutes', '30')) || 30,
+      usageChance: parseFloat(S('usageChance', '0.5'))
+    }));
+  } catch (e) {}
+}
+
 /* 把走动参数打包推给原生 */
 function pushWalkConfig() {
   // 参数固定：间隔 3~10 分钟、移动概率 0.6、连走 0.35、递减 0.5
@@ -694,6 +710,7 @@ function pushWalkConfig() {
 window.__applySettings = function () {
   applyPetScale();
   pushWalkConfig();
+  pushReadConfig();
   try { B.setLocked(S('lockPosition', '0') === '1'); } catch (e) {}
 };
 window.__screen = function () { setTimeout(refresh, 60); };
@@ -1167,7 +1184,6 @@ window.__onScreenTick = function () {
   if (asleep || busy || typing) return;
   if (S('screenRead', '0') !== '1') return;
   if (!useAi()) return;
-  if (Math.random() > 0.7) return;          // 到点也不一定看
 
   busy = true;
   const cbId = 'sc' + (++cbSeq);
@@ -1182,7 +1198,6 @@ window.__onUsageTick = function () {
   if (asleep || busy || typing) return;
   if (S('usageRead', '0') !== '1') return;
   if (!useAi()) return;
-  if (Math.random() > 0.7) return;
 
   let list = [];
   try { list = JSON.parse(B.readUsage(60, 5)) || []; } catch (e) { list = []; }
@@ -1336,6 +1351,7 @@ window.addEventListener('load', function () {
 
   // 启动时把行走/锁定状态推给原生
   pushWalkConfig();
+  pushReadConfig();
   try { B.setLocked(S('lockPosition', '0') === '1'); } catch (e) {}
   applyPetScale();
   setTimeout(refresh, 100);

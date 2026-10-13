@@ -316,8 +316,8 @@ class OverlayPetService : Service() {
         walkHandler.removeCallbacks(walkTick)
         walkHandler.postDelayed(sleepTick, SLEEP_TICK_MS)
         walkHandler.postDelayed(walkTick, nextWalkDelay())
-        walkHandler.postDelayed(screenTick, SCREEN_TICK_MS)
-        walkHandler.postDelayed(usageTick, USAGE_TICK_MS)
+        walkHandler.postDelayed(screenTick, randDelay(screenMinMs, screenMaxMs))
+        walkHandler.postDelayed(usageTick, randDelay(usageMinMs, usageMaxMs))
     }
 
     /** 睡觉骰子 */
@@ -370,25 +370,61 @@ class OverlayPetService : Service() {
 
     private var screenReader: ScreenReader? = null
 
-    private val SCREEN_TICK_MS = 25 * 60 * 1000L
-    private val USAGE_TICK_MS = 18 * 60 * 1000L
+    // 间隔和概率都可以从设置页调；掷骰子在这里做，网页只管干活
+    private var screenEnabled = false
+    private var screenMinMs = 20 * 60 * 1000L
+    private var screenMaxMs = 40 * 60 * 1000L
+    private var screenChance = 0.5
+
+    private var usageEnabled = false
+    private var usageMinMs = 15 * 60 * 1000L
+    private var usageMaxMs = 30 * 60 * 1000L
+    private var usageChance = 0.5
+
+    private fun randDelay(minMs: Long, maxMs: Long): Long {
+        val lo = minMs.coerceAtLeast(5000L)
+        val hi = maxMs.coerceAtLeast(lo)
+        return lo + (Math.random() * (hi - lo)).toLong()
+    }
 
     private val screenTick = object : Runnable {
         override fun run() {
-            if (state == ST_IDLE) {
+            if (screenEnabled && state == ST_IDLE && Math.random() < screenChance) {
                 webView.evaluateJavascript("window.__onScreenTick && window.__onScreenTick()", null)
             }
-            walkHandler.postDelayed(this, SCREEN_TICK_MS)
+            walkHandler.postDelayed(this, randDelay(screenMinMs, screenMaxMs))
         }
     }
 
     private val usageTick = object : Runnable {
         override fun run() {
-            if (state == ST_IDLE) {
+            if (usageEnabled && state == ST_IDLE && Math.random() < usageChance) {
                 webView.evaluateJavascript("window.__onUsageTick && window.__onUsageTick()", null)
             }
-            walkHandler.postDelayed(this, USAGE_TICK_MS)
+            walkHandler.postDelayed(this, randDelay(usageMinMs, usageMaxMs))
         }
+    }
+
+    /** 设置页传来的读屏 / 使用数据配置 */
+    fun setReadConfig(json: String) {
+        try {
+            val o = JSONObject(json)
+            screenEnabled = o.optBoolean("screenEnabled", false)
+            screenMinMs = (o.optDouble("screenMin", 20.0) * 60000).toLong()
+            screenMaxMs = (o.optDouble("screenMax", 40.0) * 60000).toLong()
+            screenChance = o.optDouble("screenChance", 0.5).coerceIn(0.0, 1.0)
+
+            usageEnabled = o.optBoolean("usageEnabled", false)
+            usageMinMs = (o.optDouble("usageMin", 15.0) * 60000).toLong()
+            usageMaxMs = (o.optDouble("usageMax", 30.0) * 60000).toLong()
+            usageChance = o.optDouble("usageChance", 0.5).coerceIn(0.0, 1.0)
+        } catch (_: Exception) {
+        }
+        // 参数变了，重新排期
+        walkHandler.removeCallbacks(screenTick)
+        walkHandler.removeCallbacks(usageTick)
+        walkHandler.postDelayed(screenTick, randDelay(screenMinMs, screenMaxMs))
+        walkHandler.postDelayed(usageTick, randDelay(usageMinMs, usageMaxMs))
     }
 
     /** Activity 拿到截屏授权后调用 */

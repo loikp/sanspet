@@ -13,6 +13,12 @@ const FIELDS = [
   ['contextLimit', '50'],
   ['proactiveRate', '0.08'],
   ['pokeLlmRate', '0.5'],
+  ['screenMinMinutes', '20'],
+  ['screenMaxMinutes', '40'],
+  ['screenChance', '0.5'],
+  ['usageMinMinutes', '15'],
+  ['usageMaxMinutes', '30'],
+  ['usageChance', '0.5'],
 ];
 
 function loadSettings() {

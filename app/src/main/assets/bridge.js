@@ -48,6 +48,7 @@
     setAnchor: () => {},
     setWindowSize: () => {},
     setWalkConfig: () => {},
+    setReadConfig: () => {},
     setLocked: () => {},
     pokePet: () => {},
     markInteraction: () => {},

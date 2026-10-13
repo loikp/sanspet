@@ -215,6 +215,13 @@ class PetBridge(
 
     // ---------- 读屏 / 使用数据 ----------
 
+    /** 读屏 / 使用数据的间隔与概率 */
+    @JavascriptInterface
+    fun setReadConfig(json: String?) {
+        val s = json ?: "{}"
+        main.post { (overlay ?: OverlayPetService.instance)?.setReadConfig(s) }
+    }
+
     @JavascriptInterface
     fun hasScreenCapture(): Boolean = ScreenConsent.granted
 

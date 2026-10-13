@@ -147,17 +147,31 @@
 </section>
 
 <section>
-  <h2>读屏与使用数据</h2>
-  <div class="hint">这两个只在「AI 对话」模式下生效，而且只在<b>待机</b>时随机触发。</div>
-
-  <div class="checkbox" style="margin-top:12px"><input id="screenRead" type="checkbox"><label for="screenRead" style="margin:0">随机读屏（截图让 AI 评论）</label></div>
+  <h2>随机读屏</h2>
+  <div class="checkbox"><input id="screenRead" type="checkbox"><label for="screenRead" style="margin:0">开启随机读屏（截图让 AI 评论）</label></div>
   <div class="status">截屏授权：<span id="captureStatus">检查中…</span></div>
   <div class="row"><button id="btnCapture" class="brutal-btn orange">授权截屏</button></div>
-  <div class="hint">需要<b>支持视觉的模型</b>（如 gpt-4o-mini、qwen-vl-max）。deepseek-chat 不支持图片，会直接报错。</div>
+  <label>间隔（分钟）：最短 / 最长</label>
+  <div class="row" style="margin-top:0">
+    <input id="screenMinMinutes" type="number" min="1" max="180" step="1" style="flex:1">
+    <input id="screenMaxMinutes" type="number" min="1" max="180" step="1" style="flex:1">
+  </div>
+  <label>触发概率（0~1）</label>
+  <input id="screenChance" type="number" min="0" max="1" step="0.05">
+</section>
 
-  <div class="checkbox" style="margin-top:16px"><input id="usageRead" type="checkbox"><label for="usageRead" style="margin:0">随机读使用数据（看你在用什么 App）</label></div>
+<section>
+  <h2>随机读使用数据</h2>
+  <div class="checkbox"><input id="usageRead" type="checkbox"><label for="usageRead" style="margin:0">开启随机读使用数据</label></div>
   <div class="status">使用情况访问：<span id="usageStatus">检查中…</span></div>
   <div class="row"><button id="btnUsage" class="brutal-btn orange">去开启权限</button></div>
+  <label>间隔（分钟）：最短 / 最长</label>
+  <div class="row" style="margin-top:0">
+    <input id="usageMinMinutes" type="number" min="1" max="180" step="1" style="flex:1">
+    <input id="usageMaxMinutes" type="number" min="1" max="180" step="1" style="flex:1">
+  </div>
+  <label>触发概率（0~1）</label>
+  <input id="usageChance" type="number" min="0" max="1" step="0.05">
 </section>
 
 <section>
