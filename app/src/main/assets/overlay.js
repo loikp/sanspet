@@ -665,14 +665,14 @@ function refresh() {
 
   // 对话框就贴在宠物正上方（跟着宠物高度走，不会留大片空隙）
   const dlg = $('#dialog');
-  if (dlg) dlg.style.bottom = Math.round(petH + 98 + 8) + 'px';
+  if (dlg) dlg.style.bottom = Math.round(petH + 102 + 8) + 'px';
 
   // 窗口尺寸 = 刚好装下所有槽位
   // 对话框缩小后是 175 x 91（要和 CSS 里的 #dialog 一致），窗口也跟着缩
   const DIALOG_W = 175;
   const DIALOG_MAX_H = 91;
   const winW = Math.max(DIALOG_W + 16, Math.round(petW) + 20);
-  const winH = Math.round(petH + 98 + 8 + DIALOG_MAX_H + 10);
+  const winH = Math.round(petH + 102 + 8 + DIALOG_MAX_H + 10);
   try { B.setWindowSize(winW, winH); } catch (e) {}
 
   reportAnchor();

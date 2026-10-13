@@ -17,7 +17,7 @@ html, body.overlay {
   left: 0;
   right: 0;
   margin: 0 auto;
-  bottom: 98px;
+  bottom: 102px;
   width: calc(110px * var(--pet-scale, 1));
   object-fit: contain;
   image-rendering: pixelated;
@@ -52,7 +52,8 @@ body.sleeping:not(.has-sleep-img) #pet {
   left: 0;
   right: 0;
   margin: 0 auto;
-  bottom: 58px;
+  /* 1mm ≈ 6.3dp：输入条顶边(20+34=54) + 6.3 = 60.3 */
+  bottom: 60.3px;
   width: max-content;
   display: flex;
   gap: 5px;
@@ -123,7 +124,7 @@ body.sleeping:not(.has-sleep-img) #pet {
   left: 0;
   right: 0;
   margin: 0 auto;
-  bottom: 8px;
+  bottom: 20px;
   display: flex;
   gap: 6px;
   align-items: center;
