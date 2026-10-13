@@ -57,6 +57,32 @@ function wantsAi() {
   return Math.random() < aiChance();
 }
 
+/* ================= 过滤"思考过程" =================
+
+   模型偶尔会把推理过程当正文返回，比如：
+     "用户给我看截图……我应该用 sans 的语气说一句不超 25 字的评价……"
+   这类内容不能播出去，直接丢掉改用预设兜底。
+   maxLen：短场景传 60；普通聊天传 0（只查关键词，不限长度）
+   ================================================ */
+
+const META_WORDS = [
+  '我应该', '我该用', '我该说', '用户给我', '用户发来', '用户想让', '我看到',
+  '截图里', '截图中有', '上一条', '这个细节', '注意截图', '语气说', '需要说一句',
+  '要求我', '提示词', '模型', '思考过程', '让我想', '分析一下', '评价一个',
+  '不超25', '不超过25', '字以内'
+];
+
+function looksLikeMeta(text, maxLen) {
+  if (!text) return true;
+  const s = String(text).trim();
+  if (!s) return true;
+  if (maxLen && s.length > maxLen) return true;
+  for (let i = 0; i < META_WORDS.length; i++) {
+    if (s.indexOf(META_WORDS[i]) >= 0) return true;
+  }
+  return false;
+}
+
 /* 互动统一入口：按概率决定让 AI 现场生成，还是直接说预设 */
 function interactSpeak(userText, hint, presetLines) {
   if (wantsAi()) {
@@ -64,10 +90,11 @@ function interactSpeak(userText, hint, presetLines) {
     showDialog('...');
     aiAsk(userText, hint, function (r) {
       busy = false;
-      if (r.ok && r.content) {
-        addHistory('assistant', r.content);
+      if (r.ok && r.content && !looksLikeMeta(r.content, 60)) {
+        addHistoryOnly('assistant', r.content);
         speak(r.content);
       } else if (presetLines && presetLines.length) {
+        // 模型跑偏了就当没这回事，用预设顶上
         speak(pick(presetLines));
       }
     });
@@ -957,8 +984,14 @@ function onClickDialog() {
 
 /* ---------------- 历史 ---------------- */
 
+/* 普通聊天：历史和记忆都写 */
 function addHistory(role, content) {
   try { B.addMessage(JSON.stringify({ role: role, content: content, time: Date.now() })); } catch (e) {}
+}
+
+/* 环境行为（戳/读屏/使用数据/睡觉）：只写历史，不污染上下文 */
+function addHistoryOnly(role, content) {
+  try { B.addMessageOnly(JSON.stringify({ role: role, content: content, time: Date.now() })); } catch (e) {}
 }
 
 function fmtTime(ts) {
@@ -1131,9 +1164,12 @@ function sendMessage() {
   const cbId = 'cb' + (++cbSeq);
   pendingCb[cbId] = function (r) {
     busy = false;
-    if (r.ok) {
+    if (r.ok && !looksLikeMeta(r.content, 0)) {
       addHistory('assistant', r.content);
       speak(r.content);
+    } else if (r.ok) {
+      // 又一次把思考吐出来了，再要一遍
+      speak('……你再说一遍，刚才那句我没听清。');
     } else {
       speak('...出问题了。\n' + (r.error || ''));
     }
@@ -1147,13 +1183,32 @@ function sendMessage() {
   }
 }
 
+/* 所有 AI 回复都从这里回来。
+   先看有没有登记过的回调（戳一戳/读屏/使用数据/睡觉都会登记），
+   交给它处理；没有才当成普通聊天。 */
+const handledCb = {};
+
 window.__sansCallback = function (id, resultJson) {
-  busy = false;
+  if (handledCb[id]) return;      // 同一个回调只处理一次
+  handledCb[id] = true;
+
   let r = {};
   try { r = JSON.parse(resultJson); } catch (e) { r = { ok: false, error: '解析失败' }; }
-  if (r.ok) {
+
+  const cb = pendingCb[id];
+  if (cb) {
+    delete pendingCb[id];
+    cb(r);                        // ← 互动回复在这里走 addHistoryOnly + 元叙述过滤
+    return;
+  }
+
+  // 兜底：普通聊天
+  busy = false;
+  if (r.ok && !looksLikeMeta(r.content, 0)) {
     addHistory('assistant', r.content);
     speak(r.content);
+  } else if (r.ok) {
+    speak('……你再说一遍，刚才那句我没听清。');
   } else {
     showDialog('...出问题了。\n' + (r.error || ''));
   }
@@ -1177,13 +1232,17 @@ window.__onScreenshot = function (cbId, ok, b64, reason) {
   }
   const hint = '下面是用户手机屏幕的截图。' +
                '挑一个你注意到的细节，用一句话（不超过 25 字）评价他现在在干嘛。' +
-               '语气像 Sans，随意、有点损但不刻薄。只输出你要说的话，不要解释、不要旁白。';
+               '语气像 Sans，随意、有点损但不刻薄。' +
+               '【直接输出这句话本身】不要分析、不要复述要求、不要出现"我应该""用户""截图"这类字眼。';
   busy = true;
   aiAsk('（你偷看了一眼他的屏幕）', hint, function (r) {
     busy = false;
-    if (r.ok && r.content) {
-      addHistory('assistant', r.content);
+    if (r.ok && r.content && !looksLikeMeta(r.content, 60)) {
+      addHistoryOnly('assistant', r.content);
       speak(r.content);
+    } else if (r.ok && r.content) {
+      // 模型在自言自语，跳过这次
+      busy = false;
     } else {
       try { B.toast('读屏请求失败：' + (r.error || '未知错误')); } catch (e) {}
     }
@@ -1254,14 +1313,14 @@ window.__onUsageTick = function (force) {
 
   const hint = '用户最近一小时内的手机使用情况，按用时排序：' + desc + '。' +
                '\n挑一个你觉得有意思的点，用一句不超过 25 字的话调侃一下，语气像 Sans。' +
-               '只输出你要说的话，不要解释、不要旁白。';
+               '【直接输出这句话本身】不要分析、不要复述要求。';
   busy = true;
   aiAsk('（你偷看了他的使用记录）', hint, function (r) {
     busy = false;
-    if (r.ok && r.content) {
-      addHistory('assistant', r.content);
+    if (r.ok && r.content && !looksLikeMeta(r.content, 60)) {
+      addHistoryOnly('assistant', r.content);
       speak(r.content);
-    } else {
+    } else if (!r.ok) {
       try { B.toast('读使用数据失败：' + (r.error || '未知错误')); } catch (e) {}
     }
   });

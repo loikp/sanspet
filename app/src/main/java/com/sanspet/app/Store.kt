@@ -29,11 +29,21 @@ class Store(context: Context) {
 
     // ---------- 写入 ----------
 
-    /** 写一条消息：历史和记忆同时写 */
+    /** 写一条消息：历史和记忆同时写（普通聊天用） */
     @Synchronized
     fun addMessage(json: String) {
         append(KEY_MESSAGES, json)
         append(KEY_MEMORY, json)
+    }
+
+    /**
+     * 只写对话历史，不写上下文记忆。
+     * 戳一戳 / 读屏 / 使用数据 / 睡觉这些「环境行为」的回复走这里 ——
+     * 它们能在历史窗口里翻到，但不会污染发给模型的上下文。
+     */
+    @Synchronized
+    fun addMessageOnly(json: String) {
+        append(KEY_MESSAGES, json)
     }
 
     @Synchronized

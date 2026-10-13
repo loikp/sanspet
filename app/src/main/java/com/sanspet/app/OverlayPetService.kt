@@ -464,17 +464,21 @@ class OverlayPetService : Service() {
     fun captureScreen(callbackId: String) {
         // 优先用无障碍截图：开一次就永久有效，不像 MediaProjection 会过期
         val acc = SansAccessibilityService.instance
-        if (acc != null) {
-            acc.grab(720, 60) { b64 ->
-                if (b64 == null) {
-                    val why = SansAccessibilityService.lastError.ifEmpty { "无障碍截图失败" }
-                    ScreenConsent.lastError = why
-                    sendScreenshotResult(callbackId, false, "", why)
+        if (acc == null && SansAccessibilityService.enabled(this)) {
+            // 开着但还没绑回来（App 刚启动常见）：等一下再试，别退回会过期的投射
+            walkHandler.postDelayed({
+                val a2 = SansAccessibilityService.instance
+                if (a2 == null) {
+                    sendScreenshotResult(callbackId, false, "",
+                        "无障碍服务还没连上，过几秒再试一次")
                 } else {
-                    ScreenConsent.lastError = ""
-                    sendScreenshotResult(callbackId, true, b64, "")
+                    captureByAccessibility(a2, callbackId)
                 }
-            }
+            }, 1500)
+            return
+        }
+        if (acc != null) {
+            captureByAccessibility(acc, callbackId)
             return
         }
 
@@ -504,6 +508,19 @@ class OverlayPetService : Service() {
                 sendScreenshotResult(callbackId, true, b64, "")
             }
         }.start()
+    }
+
+    private fun captureByAccessibility(acc: SansAccessibilityService, callbackId: String) {
+        acc.grab(720, 60) { b64 ->
+            if (b64 == null) {
+                val why = SansAccessibilityService.lastError.ifEmpty { "无障碍截图失败" }
+                ScreenConsent.lastError = why
+                sendScreenshotResult(callbackId, false, "", why)
+            } else {
+                ScreenConsent.lastError = ""
+                sendScreenshotResult(callbackId, true, b64, "")
+            }
+        }
     }
 
     private fun sendScreenshotResult(cbId: String, ok: Boolean, b64: String, reason: String) {

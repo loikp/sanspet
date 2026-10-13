@@ -58,6 +58,12 @@ class PetBridge(
         store.addMessage(json ?: "{}")
     }
 
+    /** 只写历史不进记忆（互动类回复用） */
+    @JavascriptInterface
+    fun addMessageOnly(json: String?) {
+        store.addMessageOnly(json ?: "{}")
+    }
+
     @JavascriptInterface
     fun getMessages(offset: Int, limit: Int): String = store.getMessages(offset, limit)
 
@@ -238,7 +244,7 @@ class PetBridge(
 
     /** 无障碍服务是否已开（首选截图方式） */
     @JavascriptInterface
-    fun hasAccessibility(): Boolean = SansAccessibilityService.ready
+    fun hasAccessibility(): Boolean = SansAccessibilityService.enabled(context)
 
     /** 跳到系统无障碍设置页 */
     @JavascriptInterface

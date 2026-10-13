@@ -32,6 +32,7 @@
       for (let i = arr.length - 1 - offset; i >= 0 && out.length < limit; i--) out.push(arr[i]);
       return JSON.stringify(out);
     },
+    addMessageOnly: (json) => window.B.addMessage(json),
     countMessages: () => read().length,
     getMemory: (offset, limit) => {
       const arr = read();

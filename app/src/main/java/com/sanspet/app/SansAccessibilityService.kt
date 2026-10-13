@@ -97,6 +97,26 @@ class SansAccessibilityService : AccessibilityService() {
 
         @Volatile var lastError: String = ""
 
+        /** 服务实例是否已经连上（这一刻能不能马上截图） */
         val ready: Boolean get() = instance != null
+
+        /**
+         * 用户是否在系统设置里开着这个服务。
+         * 注意：App 刚重启时系统可能还没把它绑回来，
+         * 这时 ready 是 false，但 enabled 已经是 true —— 不能当成"没授权"。
+         */
+        fun enabled(ctx: android.content.Context): Boolean {
+            if (instance != null) return true
+            return try {
+                val am = ctx.getSystemService(android.content.Context.ACCESSIBILITY_SERVICE)
+                        as android.view.accessibility.AccessibilityManager
+                val list = am.getEnabledAccessibilityServiceList(
+                    android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_ALL_MASK
+                )
+                list.any { it.resolveInfo?.serviceInfo?.packageName == ctx.packageName }
+            } catch (_: Exception) {
+                false
+            }
+        }
     }
 }
