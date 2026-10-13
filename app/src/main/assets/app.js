@@ -97,6 +97,55 @@ function refreshPermission() {
   el.className = ok ? 'ok' : 'bad';
 }
 
+/* 视觉能力自检：画一张纯红小图发过去，看原始返回 */
+window.__sansCallback = function (id, json) {
+  const out = $('#visionResult');
+  if (out) {
+    let pretty = json;
+    try { pretty = JSON.stringify(JSON.parse(json), null, 2); } catch (e) {}
+    out.value = pretty;
+  }
+};
+
+$('#btnTestVision').addEventListener('click', function () {
+  saveSettings();
+  const out = $('#visionResult');
+  if (out) out.value = '测试中…';
+
+  // 现画一张 64x64 纯红图，转成 dataURL
+  let dataUrl = '';
+  try {
+    const c = document.createElement('canvas');
+    c.width = 64; c.height = 64;
+    const g = c.getContext('2d');
+    g.fillStyle = '#ff0000';
+    g.fillRect(0, 0, 64, 64);
+    dataUrl = c.toDataURL('image/png');
+  } catch (e) {
+    if (out) out.value = '画测试图失败：' + e;
+    return;
+  }
+
+  const payload = {
+    baseUrl: ($('#baseUrl').value || '').trim(),
+    apiKey: ($('#apiKey').value || '').trim(),
+    model: ($('#model').value || '').trim(),
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'text', text: '这张图是什么颜色？只回答颜色。' },
+        { type: 'image_url', image_url: { url: dataUrl } }
+      ]
+    }]
+  };
+
+  try {
+    B.chat(JSON.stringify(payload), 'vision-test');
+  } catch (e) {
+    if (out) out.value = '调用失败：' + e;
+  }
+});
+
 /* 读屏 / 使用数据的权限状态 */
 function refreshReadPerms() {
   const as = $('#accStatus');
