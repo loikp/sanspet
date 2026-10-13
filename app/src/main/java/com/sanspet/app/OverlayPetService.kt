@@ -451,7 +451,10 @@ class OverlayPetService : Service() {
                             ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
                 )
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // 不退让：把原因记下来，后面报错能看出来
+            ScreenConsent.lastError = "前台服务类型切换失败 · " +
+                    e.javaClass.simpleName + "：" + (e.message ?: "未知")
         }
         val sr = screenReader ?: ScreenReader(this).also { screenReader = it }
         sr.init()

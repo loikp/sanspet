@@ -336,15 +336,22 @@ class PetBridge(
                     .put("error", "HTTP $code: ${text.take(300)}").toString()
             }
 
-            val content = JSONObject(text)
+            val msg = JSONObject(text)
                 .optJSONArray("choices")
                 ?.optJSONObject(0)
                 ?.optJSONObject("message")
-                ?.optString("content")
-                .orEmpty()
+
+            var content = msg?.optString("content").orEmpty().trim()
+            // 推理类模型（如 deepseek-reasoner）有时把内容放在 reasoning_content
+            if (content.isEmpty()) {
+                content = msg?.optString("reasoning_content").orEmpty().trim()
+            }
 
             if (content.isEmpty()) {
-                JSONObject().put("ok", false).put("error", "模型返回为空").toString()
+                // 把原始响应带出来，方便判断是"模型不支持图片"还是别的
+                JSONObject().put("ok", false)
+                    .put("error", "模型返回为空。原始响应：" + text.take(400))
+                    .toString()
             } else {
                 JSONObject().put("ok", true).put("content", content).toString()
             }
