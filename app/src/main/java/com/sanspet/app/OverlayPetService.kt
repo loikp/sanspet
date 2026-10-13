@@ -316,6 +316,8 @@ class OverlayPetService : Service() {
         walkHandler.removeCallbacks(walkTick)
         walkHandler.postDelayed(sleepTick, SLEEP_TICK_MS)
         walkHandler.postDelayed(walkTick, nextWalkDelay())
+        walkHandler.postDelayed(screenTick, SCREEN_TICK_MS)
+        walkHandler.postDelayed(usageTick, USAGE_TICK_MS)
     }
 
     /** 睡觉骰子 */
@@ -362,6 +364,70 @@ class OverlayPetService : Service() {
         } else {
             markInteraction()
         }
+    }
+
+    // ---------- 读屏 / 使用数据（待机的两个子状态） ----------
+
+    private var screenReader: ScreenReader? = null
+
+    private val SCREEN_TICK_MS = 25 * 60 * 1000L
+    private val USAGE_TICK_MS = 18 * 60 * 1000L
+
+    private val screenTick = object : Runnable {
+        override fun run() {
+            if (state == ST_IDLE) {
+                webView.evaluateJavascript("window.__onScreenTick && window.__onScreenTick()", null)
+            }
+            walkHandler.postDelayed(this, SCREEN_TICK_MS)
+        }
+    }
+
+    private val usageTick = object : Runnable {
+        override fun run() {
+            if (state == ST_IDLE) {
+                webView.evaluateJavascript("window.__onUsageTick && window.__onUsageTick()", null)
+            }
+            walkHandler.postDelayed(this, USAGE_TICK_MS)
+        }
+    }
+
+    /** Activity 拿到截屏授权后调用 */
+    fun initScreenCapture() {
+        if (!ScreenConsent.granted) return
+        try {
+            // Android 14+ 要求先以 mediaProjection 类型 startForeground，才能拿 MediaProjection
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                ServiceCompat.startForeground(
+                    this, 1, buildNotification(),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or
+                            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                )
+            }
+        } catch (_: Exception) {
+        }
+        val sr = screenReader ?: ScreenReader(this).also { screenReader = it }
+        sr.init()
+    }
+
+    /** 抓一帧，结果通过 window.__onScreenshot(cbId, ok, base64) 回传 */
+    fun captureScreen(callbackId: String) {
+        if (screenReader?.ready != true) initScreenCapture()
+        val sr = screenReader
+        if (sr?.ready != true) {
+            webView.evaluateJavascript(
+                "window.__onScreenshot && window.__onScreenshot(" +
+                        JSONObject.quote(callbackId) + ",false,'')", null
+            )
+            return
+        }
+        Thread {
+            val b64 = sr.capture()
+            val js = "window.__onScreenshot && window.__onScreenshot(" +
+                    JSONObject.quote(callbackId) + "," +
+                    (if (b64 != null) "true" else "false") + "," +
+                    JSONObject.quote(b64 ?: "") + ")"
+            walkHandler.post { webView.evaluateJavascript(js, null) }
+        }.start()
     }
 
     // ---------- 移动 ----------
@@ -636,6 +702,16 @@ class OverlayPetService : Service() {
                 .createNotificationChannel(channel)
         }
 
+        ServiceCompat.startForeground(this, 1, buildNotification(), fgType())
+    }
+
+    private fun fgType(): Int {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return 0
+        return ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+    }
+
+    private fun buildNotification(): android.app.Notification {
+        val channelId = "sanspet"
         val stopIntent = Intent(this, OverlayPetService::class.java).setAction(ACTION_STOP)
         val stopPending = PendingIntent.getService(
             this, 1, stopIntent,
@@ -650,12 +726,7 @@ class OverlayPetService : Service() {
             .addAction(0, "关闭桌宠", stopPending)
             .build()
 
-        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-        } else {
-            0
-        }
-        ServiceCompat.startForeground(this, 1, notification, type)
+        return notification
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -668,6 +739,8 @@ class OverlayPetService : Service() {
 
     override fun onDestroy() {
         walkHandler.removeCallbacksAndMessages(null)
+        try { screenReader?.release() } catch (_: Exception) {}
+        screenReader = null
         isRunning = false
         if (instance === this) instance = null
         savePosition()

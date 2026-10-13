@@ -213,6 +213,38 @@ class PetBridge(
         main.post { Toast.makeText(context, msg ?: "", Toast.LENGTH_SHORT).show() }
     }
 
+    // ---------- 读屏 / 使用数据 ----------
+
+    @JavascriptInterface
+    fun hasScreenCapture(): Boolean = ScreenConsent.granted
+
+    /** 申请截屏授权（会弹系统对话框） */
+    @JavascriptInterface
+    fun requestScreenCapture() {
+        main.post { ScreenPermission.activity?.askScreenCapture() }
+    }
+
+    @JavascriptInterface
+    fun hasUsageAccess(): Boolean = UsageReader.hasPermission(context)
+
+    /** 跳到系统「使用情况访问」设置页 */
+    @JavascriptInterface
+    fun openUsageAccessSettings() {
+        main.post { ScreenPermission.activity?.openUsageAccessSettings() }
+    }
+
+    /** 读最近几分钟用得最多的几个 App，返回 JSON 数组 */
+    @JavascriptInterface
+    fun readUsage(minutes: Int, limit: Int): String =
+        UsageReader.recentApps(context, minutes, limit)
+
+    /** 请求截一帧；结果走 window.__onScreenshot(cbId, ok, base64) */
+    @JavascriptInterface
+    fun requestScreenshot(callbackId: String?) {
+        val cb = callbackId ?: "0"
+        main.post { (overlay ?: OverlayPetService.instance)?.captureScreen(cb) }
+    }
+
     // ---------- AI 对话 ----------
 
     @JavascriptInterface

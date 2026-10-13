@@ -554,11 +554,11 @@ function hasApiKey() {
 /* 通用 AI 调用：hint 会追加到系统提示词，cb 收到 {ok, content} */
 const pendingCb = {};
 
-function aiAsk(userText, hint, cb) {
+function aiAsk(userText, hint, cb, imageB64) {
   const cbId = 'ai' + (++cbSeq);
   pendingCb[cbId] = cb;
   try {
-    B.chat(JSON.stringify(buildPayload(userText, hint)), cbId);
+    B.chat(JSON.stringify(buildPayload(userText, hint, imageB64)), cbId);
   } catch (e) {
     delete pendingCb[cbId];
     cb({ ok: false, error: '调用失败' });
@@ -667,9 +667,12 @@ function refresh() {
   const dlg = $('#dialog');
   if (dlg) dlg.style.bottom = Math.round(petH + 98 + 8) + 'px';
 
-  // 窗口尺寸 = 刚好装下所有槽位（只在尺寸真的变了的时候才会生效）
-  const winW = Math.max(264, Math.round(petW) + 20);
-  const winH = Math.round(petH + 98 + 8 + 130 + 10);
+  // 窗口尺寸 = 刚好装下所有槽位
+  // 对话框缩小后是 175 x 91（要和 CSS 里的 #dialog 一致），窗口也跟着缩
+  const DIALOG_W = 175;
+  const DIALOG_MAX_H = 91;
+  const winW = Math.max(DIALOG_W + 16, Math.round(petW) + 20);
+  const winH = Math.round(petH + 98 + 8 + DIALOG_MAX_H + 10);
   try { B.setWindowSize(winW, winH); } catch (e) {}
 
   reportAnchor();
@@ -1054,13 +1057,25 @@ function buildSystemPrompt() {
   return base;
 }
 
-function buildPayload(userText, hint) {
+function buildPayload(userText, hint, imageB64) {
   const limit = parseInt(S('contextLimit', '50'), 10) || 50;
   let sys = buildSystemPrompt();
   if (hint) sys += '\n\n【当前情境】\n' + hint;
   const messages = [{ role: 'system', content: sys }];
   recentContext(limit).forEach(function (m) { messages.push(m); });
-  messages.push({ role: 'user', content: userText });
+
+  // 有图就走视觉模型的多段格式
+  if (imageB64) {
+    messages.push({
+      role: 'user',
+      content: [
+        { type: 'text', text: userText },
+        { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + imageB64 } }
+      ]
+    });
+  } else {
+    messages.push({ role: 'user', content: userText });
+  }
 
   return {
     baseUrl: S('baseUrl', 'https://api.deepseek.com/v1'),
@@ -1127,15 +1142,80 @@ window.__sansCallback = function (id, resultJson) {
   }
 };
 
+/* ================= 读屏 / 使用数据（待机的两个子状态） =================
+
+   都要求：AI 对话模式 + 接口配好 + 对应开关打开
+   都只在待机时触发（原生那边已经判断了 state == IDLE）
+   ==================================================================== */
+
+window.__onScreenshot = function (cbId, ok, b64) {
+  if (!ok || !b64) { busy = false; return; }
+  const hint = '下面是用户手机屏幕的截图。' +
+               '挑一个你注意到的细节，用一句话（不超过 25 字）评价他现在在干嘛。' +
+               '语气像 Sans，随意、有点损但不刻薄。只输出你要说的话，不要解释、不要旁白。';
+  busy = true;
+  aiAsk('（你偷看了一眼他的屏幕）', hint, function (r) {
+    busy = false;
+    if (r.ok && r.content) {
+      addHistory('assistant', r.content);
+      speak(r.content);
+    }
+  }, b64);
+};
+
+window.__onScreenTick = function () {
+  if (asleep || busy || typing) return;
+  if (S('screenRead', '0') !== '1') return;
+  if (!useAi()) return;
+  if (Math.random() > 0.7) return;          // 到点也不一定看
+
+  busy = true;
+  const cbId = 'sc' + (++cbSeq);
+  try {
+    B.requestScreenshot(cbId);
+  } catch (e) {
+    busy = false;
+  }
+};
+
+window.__onUsageTick = function () {
+  if (asleep || busy || typing) return;
+  if (S('usageRead', '0') !== '1') return;
+  if (!useAi()) return;
+  if (Math.random() > 0.7) return;
+
+  let list = [];
+  try { list = JSON.parse(B.readUsage(60, 5)) || []; } catch (e) { list = []; }
+  if (!list.length) return;
+
+  const desc = list.map(function (a) {
+    return a.name + '（用了 ' + a.minutes + ' 分钟，' + a.lastUsedMinAgo + ' 分钟前打开）';
+  }).join('；');
+
+  const hint = '用户最近一小时内的手机使用情况，按用时排序：' + desc + '。' +
+               '\n挑一个你觉得有意思的点，用一句不超过 25 字的话调侃一下，语气像 Sans。' +
+               '只输出你要说的话，不要解释、不要旁白。';
+  busy = true;
+  aiAsk('（你偷看了他的使用记录）', hint, function (r) {
+    busy = false;
+    if (r.ok && r.content) {
+      addHistory('assistant', r.content);
+      speak(r.content);
+    }
+  });
+};
+
 /* ---------------- 主动回复 ---------------- */
 
 /* 戳一戳：没有 Key 一律预设；有 Key 按概率走 LLM */
 function pokeOnce() {
   const count = recordTap();
   const tier = tierFor(count);
-  const hint = '用户刚刚戳了你一下。最近一小时内，他总共戳了你 ' + count + ' 次（包含刚才这次）。' +
+  // 计数已经算好，直接写进提示词，不用模型猜
+  const hint = '【戳一戳计数】最近一小时内，用户一共戳了你 ' + count + ' 次（含这一次）。' +
+               '这个数字是准确值，直接用它，不要自己推测。\n' +
                tier.hint +
-               '\n\n现在用一句很短的话回应他，不超过 20 个字。只输出你要说的话，不要解释、不要旁白。';
+               '\n\n用一句很短的话回应他，不超过 20 个字。只输出你要说的话，不要解释、不要旁白。';
   interactSpeak('（用户戳了你一下）', hint, tier.lines);
 }
 

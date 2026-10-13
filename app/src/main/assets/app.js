@@ -23,6 +23,9 @@ function loadSettings() {
   $('#sound').checked = B.getSetting('sound', '1') === '1';
   $('#proactive').checked = B.getSetting('proactive', '1') === '1';
   $('#walkEnabled').checked = B.getSetting('walkEnabled', '0') === '1';
+  $('#screenRead').checked = B.getSetting('screenRead', '0') === '1';
+  $('#usageRead').checked = B.getSetting('usageRead', '0') === '1';
+  refreshReadPerms();
   $('#lockPosition').checked = B.getSetting('lockPosition', '0') === '1';
 
   const mode = B.getSetting('chatMode', 'ai');
@@ -44,6 +47,8 @@ function saveSettings() {
   B.setSetting('sound', $('#sound').checked ? '1' : '0');
   B.setSetting('proactive', $('#proactive').checked ? '1' : '0');
   B.setSetting('walkEnabled', $('#walkEnabled').checked ? '1' : '0');
+  B.setSetting('screenRead', $('#screenRead').checked ? '1' : '0');
+  B.setSetting('usageRead', $('#usageRead').checked ? '1' : '0');
   B.setSetting('lockPosition', $('#lockPosition').checked ? '1' : '0');
 
   const checkedMode = document.querySelector('input[name=chatMode]:checked');
@@ -85,6 +90,34 @@ function refreshPermission() {
   el.textContent = ok ? '已开启' : '未开启';
   el.className = ok ? 'ok' : 'bad';
 }
+
+/* 读屏 / 使用数据的权限状态 */
+function refreshReadPerms() {
+  const cs = $('#captureStatus');
+  if (cs) {
+    let ok = false;
+    try { ok = B.hasScreenCapture(); } catch (e) { ok = false; }
+    cs.textContent = ok ? '已授权' : '未授权';
+    cs.className = ok ? 'ok' : 'bad';
+  }
+  const us = $('#usageStatus');
+  if (us) {
+    let ok = false;
+    try { ok = B.hasUsageAccess(); } catch (e) { ok = false; }
+    us.textContent = ok ? '已授权' : '未授权';
+    us.className = ok ? 'ok' : 'bad';
+  }
+}
+
+$('#btnCapture').addEventListener('click', function () {
+  B.requestScreenCapture();
+  setTimeout(refreshReadPerms, 3000);
+});
+
+$('#btnUsage').addEventListener('click', function () {
+  B.openUsageAccessSettings();
+  setTimeout(refreshReadPerms, 3000);
+});
 
 /* 随机走动 和 锁定位置 互斥：只能选一个，或者都不选 */
 $('#walkEnabled').addEventListener('change', function () {
@@ -195,6 +228,7 @@ document.addEventListener('visibilitychange', function () {
   if (!document.hidden) {
     refreshPermission();
     refreshToggle();
+    refreshReadPerms();
   }
 });
 

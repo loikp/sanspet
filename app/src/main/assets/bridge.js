@@ -65,6 +65,15 @@
     hasOverlayPermission: () => true,
     toast: (m) => alert(m),
 
+    hasScreenCapture: () => false,
+    requestScreenCapture: () => alert('浏览器预览模式：APK 里会弹系统截屏授权'),
+    hasUsageAccess: () => false,
+    openUsageAccessSettings: () => {},
+    readUsage: () => '[]',
+    requestScreenshot: (cbId) => {
+      if (window.__onScreenshot) window.__onScreenshot(cbId, false, '');
+    },
+
     chat: async (payloadJson, cbId) => {
       let out;
       try {

@@ -61,28 +61,30 @@ body.sleeping:not(.has-sleep-img) #pet {
 
 /* ---------------- 对话框：宠物正上方 ---------------- */
 
+/* 对话框：等比缩到 70%（250→175，字号 16→11，内边距同比缩） */
 #dialog {
   position: absolute;
   left: 0;
   right: 0;
   margin: 0 auto;
-  bottom: 366px;
+  bottom: 254px;
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  width: 250px;
-  max-height: 130px;
+  gap: 6px;
+  width: 175px;
+  max-height: 91px;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.6;
   overflow-y: auto;
   cursor: pointer;
   text-align: left;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  animation: dialogIn 0.14s ease-out;
+  transform: translateX(var(--sprite-shift, 0px));
 }
-
 #dialog::-webkit-scrollbar { width: 0; height: 0; display: none; }
-
-/* 对话框也按同一个视觉中心对齐；只用透明度做淡入，避免和 transform 打架 */
-#dialog { animation: dialogIn 0.14s ease-out; transform: translateX(var(--sprite-shift, 0px)); }
 
 @keyframes dialogIn {
   from { opacity: 0; }
@@ -110,37 +112,41 @@ body.sleeping:not(.has-sleep-img) #pet {
 
 #dialog .hint {
   align-self: flex-end;
-  margin-top: 6px;
+  margin-top: 4px;
 }
 
 /* ---------------- 输入条：窗口底部 ---------------- */
 
+/* 输入条：总宽 = 对话框总宽，内部等比缩小 */
 #chatBar {
   position: absolute;
-  left: 8px;
-  right: 8px;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
   bottom: 8px;
   display: flex;
   gap: 6px;
-  align-items: center;   /* 输入框和发送键垂直居中对齐 */
+  align-items: center;
+  width: 175px;
+  transform: translateX(var(--sprite-shift, 0px));
 }
 
 #chatBar .icon-btn {
   flex: 0 0 auto;
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
+  border-width: 2px;
 }
-
 #chatInput {
   flex: 1;
   min-width: 0;
   background: var(--black);
   color: var(--white);
-  border: 3px solid var(--white);
+  border: 2px solid var(--white);
   border-radius: 0;
   font-family: var(--font-ui);
-  font-size: 14px;
-  padding: 8px 10px;
+  font-size: 11px;
+  padding: 6px 8px;
   outline: none;
 }
 #chatInput::placeholder { color: #888; }
