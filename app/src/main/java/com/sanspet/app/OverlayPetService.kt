@@ -454,27 +454,37 @@ class OverlayPetService : Service() {
         sr.init()
     }
 
-    /** 抓一帧，结果通过 window.__onScreenshot(cbId, ok, base64) 回传 */
+    /** 抓一帧，结果通过 window.__onScreenshot(cbId, ok, base64, 原因) 回传 */
     fun captureScreen(callbackId: String) {
         if (screenReader?.ready != true) initScreenCapture()
         val sr = screenReader
+
         if (sr?.ready != true) {
-            webView.evaluateJavascript(
-                "window.__onScreenshot && window.__onScreenshot(" +
-                        JSONObject.quote(callbackId) + ",false,'')", null
-            )
+            val reason = when {
+                !ScreenConsent.granted -> "还没有授权（先去点「授权截屏」）"
+                sr?.lastError?.isNotEmpty() == true -> sr.lastError
+                else -> "初始化失败"
+            }
+            sendScreenshotResult(callbackId, false, "", reason)
             return
         }
+
         Thread {
             val b64 = sr.capture()
-            val js = "window.__onScreenshot && window.__onScreenshot(" +
-                    JSONObject.quote(callbackId) + "," +
-                    (if (b64 != null) "true" else "false") + "," +
-                    JSONObject.quote(b64 ?: "") + ")"
-            walkHandler.post { webView.evaluateJavascript(js, null) }
+            if (b64 == null) {
+                sendScreenshotResult(callbackId, false, "", sr.lastError.ifEmpty { "抓帧失败" })
+            } else {
+                sendScreenshotResult(callbackId, true, b64, "")
+            }
         }.start()
     }
 
+    private fun sendScreenshotResult(cbId: String, ok: Boolean, b64: String, reason: String) {
+        val js = "window.__onScreenshot && window.__onScreenshot(" +
+                JSONObject.quote(cbId) + "," + (if (ok) "true" else "false") + "," +
+                JSONObject.quote(b64) + "," + JSONObject.quote(reason) + ")"
+        walkHandler.post { webView.evaluateJavascript(js, null) }
+    }
     // ---------- 移动 ----------
 
     private fun startMove() {

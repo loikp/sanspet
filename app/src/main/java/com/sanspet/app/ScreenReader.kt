@@ -43,12 +43,26 @@ class ScreenReader(private val context: Context) {
     var ready = false
         private set
 
+    /** 最近一次失败的原因，给设置页显示用 */
+    var lastError: String = ""
+        private set
+
     /** 用 Activity 的授权结果初始化。必须在已 startForeground(mediaProjection) 之后调用 */
     fun init(): Boolean {
-        val data = ScreenConsent.data ?: return false
+        val data = ScreenConsent.data
+        if (data == null) {
+            lastError = "还没有授权令牌"
+            ready = false
+            return false
+        }
         return try {
             val mgr = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             projection = mgr.getMediaProjection(ScreenConsent.resultCode, data)
+            if (projection == null) {
+                lastError = "系统返回了空的 projection"
+                ready = false
+                return false
+            }
             projection?.registerCallback(object : MediaProjection.Callback() {
                 override fun onStop() {
                     projection = null
@@ -56,10 +70,14 @@ class ScreenReader(private val context: Context) {
                     ScreenConsent.clear()
                 }
             }, Handler(Looper.getMainLooper()))
-            ready = projection != null
-            ready
-        } catch (_: Exception) {
+            lastError = ""
+            ready = true
+            true
+        } catch (e: Exception) {
+            // 令牌只能用一次；失败就作废，让用户重新授权
+            lastError = e.javaClass.simpleName + "：" + (e.message ?: "未知")
             ready = false
+            ScreenConsent.clear()
             false
         }
     }
@@ -92,7 +110,10 @@ class ScreenReader(private val context: Context) {
                 image = reader.acquireLatestImage()
                 if (image == null) Thread.sleep(60)
             }
-            if (image == null) return null
+            if (image == null) {
+                lastError = "2.5 秒内没有拿到画面"
+                return null
+            }
 
             val plane = image.planes[0]
             val rowStride = plane.rowStride
@@ -114,7 +135,8 @@ class ScreenReader(private val context: Context) {
             val bytes = ByteArrayOutputStream()
             out.compress(Bitmap.CompressFormat.JPEG, quality, bytes)
             Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            lastError = e.javaClass.simpleName + "：" + (e.message ?: "未知")
             null
         } finally {
             try { vd?.release() } catch (_: Exception) {}

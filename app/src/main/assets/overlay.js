@@ -1167,12 +1167,12 @@ window.__sansCallback = function (id, resultJson) {
 
 let screenPendingTimer = null;
 
-window.__onScreenshot = function (cbId, ok, b64) {
+window.__onScreenshot = function (cbId, ok, b64, reason) {
   if (screenPendingTimer) { clearTimeout(screenPendingTimer); screenPendingTimer = null; }
 
   if (!ok || !b64) {
     busy = false;
-    try { B.toast('截图失败：可能授权失效了，重新点一次「授权截屏」'); } catch (e) {}
+    try { B.toast('截图失败：' + (reason || '未知原因')); } catch (e) {}
     return;
   }
   const hint = '下面是用户手机屏幕的截图。' +

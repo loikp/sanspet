@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- 安卓 14+ 用 MediaProjection 截屏必须有这个，否则 startForeground 直接抛异常 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- 读取 App 使用情况（需要在系统设置里手动授予「使用情况访问」） -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
