@@ -17,7 +17,7 @@ html, body.overlay {
   left: 0;
   right: 0;
   margin: 0 auto;
-  bottom: 102px;
+  bottom: 98px;
   width: calc(110px * var(--pet-scale, 1));
   object-fit: contain;
   image-rendering: pixelated;
