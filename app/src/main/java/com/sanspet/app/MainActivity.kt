@@ -81,6 +81,15 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** 跳到系统的「无障碍」设置页（读屏用） */
+    fun openAccessibilitySettings() {
+        try {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        } catch (_: Exception) {
+            try { startActivity(Intent(Settings.ACTION_SETTINGS)) } catch (_: Exception) {}
+        }
+    }
+
     /** 跳到系统的「使用情况访问」设置页 */
     fun openUsageAccessSettings() {
         try {

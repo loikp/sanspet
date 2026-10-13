@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">SansPet</string>
+    <string name="acc_desc">用于「随机读屏」功能：让 Sans 偶尔看一眼屏幕并评论一下。</string>
+    <string name="acc_summary">开启后 Sans 才能读到屏幕内容</string>
 </resources>

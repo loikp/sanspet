@@ -66,7 +66,10 @@
     hasOverlayPermission: () => true,
     toast: (m) => alert(m),
 
+    hasAccessibility: () => false,
+    openAccessibilitySettings: () => {},
     hasScreenCapture: () => false,
+    screenError: () => '',
     testScreenRead: () => alert('浏览器预览模式：读屏只在 APK 里可用'),
     testUsageRead: () => alert('浏览器预览模式：使用数据只在 APK 里可用'),
     requestScreenCapture: () => alert('浏览器预览模式：APK 里会弹系统截屏授权'),

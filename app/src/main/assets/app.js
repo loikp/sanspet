@@ -99,12 +99,25 @@ function refreshPermission() {
 
 /* 读屏 / 使用数据的权限状态 */
 function refreshReadPerms() {
+  const as = $('#accStatus');
+  if (as) {
+    let ok = false;
+    try { ok = B.hasAccessibility(); } catch (e) { ok = false; }
+    as.textContent = ok ? '已开启' : '未开启';
+    as.className = ok ? 'ok' : 'bad';
+  }
   const cs = $('#captureStatus');
   if (cs) {
     let ok = false;
     try { ok = B.hasScreenCapture(); } catch (e) { ok = false; }
     cs.textContent = ok ? '已授权' : '未授权';
     cs.className = ok ? 'ok' : 'bad';
+  }
+  const ce = $('#captureError');
+  if (ce) {
+    let err = '';
+    try { err = B.screenError() || ''; } catch (e) { err = ''; }
+    ce.textContent = err ? ('上次失败原因：' + err) : '';
   }
   const us = $('#usageStatus');
   if (us) {
@@ -128,6 +141,11 @@ $('#btnTestScreen').addEventListener('click', function () {
 $('#btnTestUsage').addEventListener('click', function () {
   saveSettings();
   setTimeout(function () { try { B.testUsageRead(); } catch (e) {} }, 200);
+});
+
+$('#btnAcc').addEventListener('click', function () {
+  B.openAccessibilitySettings();
+  setTimeout(refreshReadPerms, 3000);
 });
 
 $('#btnUsage').addEventListener('click', function () {

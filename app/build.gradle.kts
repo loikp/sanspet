@@ -11,8 +11,8 @@ android {
         applicationId = "com.sanspet.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 44
-        versionName = "0.8.6"
+        versionCode = 45
+        versionName = "0.9.0"
     }
 
     signingConfigs {

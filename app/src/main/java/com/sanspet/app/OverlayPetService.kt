@@ -438,7 +438,10 @@ class OverlayPetService : Service() {
 
     /** Activity 拿到截屏授权后调用 */
     fun initScreenCapture() {
-        if (!ScreenConsent.granted) return
+        if (!ScreenConsent.granted) {
+            ScreenConsent.lastError = "还没有拿到系统授权令牌"
+            return
+        }
         try {
             // Android 14+ 要求先以 mediaProjection 类型 startForeground，才能拿 MediaProjection
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -456,15 +459,34 @@ class OverlayPetService : Service() {
 
     /** 抓一帧，结果通过 window.__onScreenshot(cbId, ok, base64, 原因) 回传 */
     fun captureScreen(callbackId: String) {
+        // 优先用无障碍截图：开一次就永久有效，不像 MediaProjection 会过期
+        val acc = SansAccessibilityService.instance
+        if (acc != null) {
+            acc.grab(720, 60) { b64 ->
+                if (b64 == null) {
+                    val why = SansAccessibilityService.lastError.ifEmpty { "无障碍截图失败" }
+                    ScreenConsent.lastError = why
+                    sendScreenshotResult(callbackId, false, "", why)
+                } else {
+                    ScreenConsent.lastError = ""
+                    sendScreenshotResult(callbackId, true, b64, "")
+                }
+            }
+            return
+        }
+
         if (screenReader?.ready != true) initScreenCapture()
         val sr = screenReader
 
         if (sr?.ready != true) {
             val reason = when {
-                !ScreenConsent.granted -> "还没有授权（先去点「授权截屏」）"
+                // 先看真实失败原因，别被"没有授权"盖住
                 sr?.lastError?.isNotEmpty() == true -> sr.lastError
+                ScreenConsent.lastError.isNotEmpty() -> ScreenConsent.lastError
+                !ScreenConsent.granted -> "还没有授权（先去点「授权截屏」）"
                 else -> "初始化失败"
             }
+            if (ScreenConsent.lastError.isEmpty()) ScreenConsent.lastError = reason
             sendScreenshotResult(callbackId, false, "", reason)
             return
         }
@@ -472,7 +494,9 @@ class OverlayPetService : Service() {
         Thread {
             val b64 = sr.capture()
             if (b64 == null) {
-                sendScreenshotResult(callbackId, false, "", sr.lastError.ifEmpty { "抓帧失败" })
+                val why = sr.lastError.ifEmpty { "抓帧失败" }
+                ScreenConsent.lastError = why
+                sendScreenshotResult(callbackId, false, "", why)
             } else {
                 sendScreenshotResult(callbackId, true, b64, "")
             }

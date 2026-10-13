@@ -236,6 +236,20 @@ class PetBridge(
     @JavascriptInterface
     fun hasScreenCapture(): Boolean = ScreenConsent.granted
 
+    /** 无障碍服务是否已开（首选截图方式） */
+    @JavascriptInterface
+    fun hasAccessibility(): Boolean = SansAccessibilityService.ready
+
+    /** 跳到系统无障碍设置页 */
+    @JavascriptInterface
+    fun openAccessibilitySettings() {
+        main.post { ScreenPermission.activity?.openAccessibilitySettings() }
+    }
+
+    /** 最近一次截屏失败的原因（空字符串表示没出错） */
+    @JavascriptInterface
+    fun screenError(): String = ScreenConsent.lastError
+
     /** 申请截屏授权（会弹系统对话框） */
     @JavascriptInterface
     fun requestScreenCapture() {

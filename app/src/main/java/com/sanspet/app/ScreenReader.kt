@@ -20,6 +20,10 @@ import java.io.ByteArrayOutputStream
 object ScreenConsent {
     @Volatile var resultCode: Int = 0
     @Volatile var data: Intent? = null
+
+    /** 最近一次截屏相关的错误，设置页会显示出来，方便定位 */
+    @Volatile var lastError: String = ""
+
     val granted: Boolean get() = data != null
 
     fun clear() {
@@ -52,6 +56,7 @@ class ScreenReader(private val context: Context) {
         val data = ScreenConsent.data
         if (data == null) {
             lastError = "还没有授权令牌"
+            ScreenConsent.lastError = "还没有拿到系统授权令牌"
             ready = false
             return false
         }
@@ -75,9 +80,10 @@ class ScreenReader(private val context: Context) {
             true
         } catch (e: Exception) {
             // 令牌只能用一次；失败就作废，让用户重新授权
+            // 记录原因，但【不清】令牌 —— 清了就看不到真实错误了
             lastError = e.javaClass.simpleName + "：" + (e.message ?: "未知")
+            ScreenConsent.lastError = "初始化失败 · " + lastError
             ready = false
-            ScreenConsent.clear()
             false
         }
     }
@@ -112,6 +118,7 @@ class ScreenReader(private val context: Context) {
             }
             if (image == null) {
                 lastError = "2.5 秒内没有拿到画面"
+                ScreenConsent.lastError = "抓帧超时 · " + lastError
                 return null
             }
 
