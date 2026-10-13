@@ -52,8 +52,8 @@ body.sleeping:not(.has-sleep-img) #pet {
   left: 0;
   right: 0;
   margin: 0 auto;
-  /* 1mm ≈ 6.3dp：输入条顶边(20+34=54) + 6.3 = 60.3 */
-  bottom: 60.3px;
+  /* 输入条顶边(20+34=54) + 3 = 57，比 1mm 再近一点 */
+  bottom: 57px;
   width: max-content;
   display: flex;
   gap: 5px;
