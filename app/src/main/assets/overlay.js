@@ -119,7 +119,7 @@ let asleep = false;
 window.__onSleep = function () {
   asleep = true;
   document.body.classList.add('sleeping');
-  if (sleepFrames.length) playFrames(sleepFrames, 0);
+  if (sleepFrames.length) playFrames(sleepFrames, 0, null, SLEEP_FRAME_MS);
   const lines = (PRESETS && PRESETS.states && PRESETS.states.sleeping &&
                  PRESETS.states.sleeping.lines) || ['……', 'Zzz'];
   interactSpeak('（你困得睡着了）',
@@ -175,12 +175,63 @@ const CHAR_DIR = 'character/';
 const WALK_DIR = CHAR_DIR + 'walk/';
 const FACE_DIR = CHAR_DIR + 'face/';
 
+/* ================= 角色视觉中心对齐 =================
+
+   素材画布不一定对称（比如 idle 左右留白 332/275），
+   直接按画布居中会让按钮偏掉。
+   这里把图缩小到 200px 扫一遍 alpha，算出角色的真实横向中心，
+   再把按钮和对话框平移过去。
+   ==================================================== */
+
+let spriteShift = 0;
+let spriteShiftRatio = null;
+
+function measureSpriteCenter(src) {
+  const img = new Image();
+  img.onload = function () {
+    try {
+      const W = 200;
+      const sc = W / img.width;
+      const c = document.createElement('canvas');
+      c.width = W;
+      c.height = Math.max(1, Math.round(img.height * sc));
+      const g = c.getContext('2d');
+      g.drawImage(img, 0, 0, c.width, c.height);
+      const d = g.getImageData(0, 0, c.width, c.height).data;
+      let minX = c.width, maxX = -1;
+      for (let y = 0; y < c.height; y++) {
+        const row = y * c.width;
+        for (let x = 0; x < c.width; x++) {
+          if (d[(row + x) * 4 + 3] > 8) {
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+          }
+        }
+      }
+      if (maxX < 0) return;
+      applySpriteShift((minX + maxX) / 2 / c.width);
+    } catch (e) {}
+  };
+  img.src = src;
+}
+
+function applySpriteShift(cx) {
+  const pet = $('#pet');
+  if (!pet || cx == null) return;
+  const w = pet.offsetWidth || 110;
+  spriteShiftRatio = cx;
+  spriteShift = (cx - 0.5) * w;
+  document.documentElement.style.setProperty('--sprite-shift', spriteShift.toFixed(1) + 'px');
+}
+
 /* ---------- 序列帧通用工具 ----------
    探测 <base>_0.png / _1.png / … 直到缺一张为止。
    每 0.5 秒换一帧，循环播放。
    ------------------------------------ */
 
-const FRAME_MS = 500;
+const WALK_FRAME_MS = 200;   // 行走：每 200ms 一张
+const FACE_FRAME_MS = 250;   // 表情：每 250ms 一张
+const SLEEP_FRAME_MS = 500;  // 睡觉：呼吸感慢一点
 const MAX_FRAMES = 16;
 
 function loadSequence(base, cb) {
@@ -200,10 +251,11 @@ let playAnim = null;
 let playTimer = null;
 
 /* duration > 0 → 播完后回调；duration = 0 → 一直播（睡觉用） */
-function playFrames(frames, duration, onEnd) {
+function playFrames(frames, duration, onEnd, intervalMs) {
   stopFrames();
   const pet = $('#pet');
   if (!pet || !frames || !frames.length) return;
+  const ms = intervalMs || FACE_FRAME_MS;
 
   let i = 0;
   pet.src = frames[0];
@@ -211,7 +263,7 @@ function playFrames(frames, duration, onEnd) {
     playAnim = setInterval(function () {
       i = (i + 1) % frames.length;
       pet.src = frames[i];
-    }, FRAME_MS);
+    }, ms);
   }
   if (duration > 0) {
     playTimer = setTimeout(function () {
@@ -237,6 +289,7 @@ function probeCharacter() {
     IDLE_SRC = CHAR_DIR + 'idle.png';
     const pet = $('#pet');
     if (pet && !asleep && walkDir === 'none') pet.src = IDLE_SRC;
+    measureSpriteCenter(IDLE_SRC);
   };
   main.onerror = function () { IDLE_SRC = 'sans.png'; };
   main.src = CHAR_DIR + 'idle.png';
@@ -340,7 +393,7 @@ window.__setWalk = function (dir) {
     walkTimer = setInterval(function () {
       f = (f + 1) % 4;
       pet.src = WALK_DIR + dir + '_' + f + '.png';
-    }, 150);
+    }, WALK_FRAME_MS);
   } else {
     pet.src = IDLE_SRC;
   }

@@ -56,6 +56,7 @@ body.sleeping:not(.has-sleep-img) #pet {
   width: max-content;
   display: flex;
   gap: 5px;
+  transform: translateX(var(--sprite-shift, 0px));
 }
 
 /* ---------------- 对话框：宠物正上方 ---------------- */
@@ -80,11 +81,12 @@ body.sleeping:not(.has-sleep-img) #pet {
 
 #dialog::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
-#dialog { animation: dialogIn 0.14s ease-out; }
+/* 对话框也按同一个视觉中心对齐；只用透明度做淡入，避免和 transform 打架 */
+#dialog { animation: dialogIn 0.14s ease-out; transform: translateX(var(--sprite-shift, 0px)); }
 
 @keyframes dialogIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 #dialog .bullet {

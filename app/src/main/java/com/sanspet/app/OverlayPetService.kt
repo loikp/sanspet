@@ -271,6 +271,7 @@ class OverlayPetService : Service() {
     private val MOVE_CHANCE = 0.6
     private val CHAIN_CHANCE = 0.35
     private val CHAIN_DECAY = 0.5
+    private val SQRT2 = 1.4142135623730951
 
     private var walkEnabled = false
     private var lastInteractionAt = System.currentTimeMillis()
@@ -367,62 +368,47 @@ class OverlayPetService : Service() {
 
     private fun startMove() {
         state = ST_WALKING
-        when ((Math.random() * 4).toInt()) {
-            0 -> { moveDX = -1; moveDY = 0 }
-            1 -> { moveDX = 1; moveDY = 0 }
-            2 -> { moveDX = 0; moveDY = -1 }
-            else -> { moveDX = 0; moveDY = 1 }
-        }
-        moveRemaining = dp(60) + Math.random() * dp(160)
+        // 只走 45 度斜向：四个角任选一个，不再有上下左右
+        moveDX = if (Math.random() < 0.5) -1 else 1
+        moveDY = if (Math.random() < 0.5) -1 else 1
+        // 总长度（斜边长度）：90dp ~ 300dp
+        moveRemaining = dp(90) + Math.random() * dp(210)
         moving = true
         setWalkVisual(dirName())
         walkHandler.removeCallbacks(moveStep)
         walkHandler.postDelayed(moveStep, 50)
     }
 
+    /**
+     * 走一小步。斜向时两轴同时动，
+     * 某根轴撞墙就把那根轴反向，剩余长度继续走（等于折返）。
+     */
     private fun stepMoveOnce() {
         val minX = dp(60)
         val maxX = (screenW - dp(60)).coerceAtLeast(minX)
         val minY = dp(90)
         val maxY = (screenH - dp(70)).coerceAtLeast(minY)
 
+        // 已经贴边就先掉头
         if (moveDX < 0 && posX <= minX) moveDX = 1
         if (moveDX > 0 && posX >= maxX) moveDX = -1
         if (moveDY < 0 && posY <= minY) moveDY = 1
         if (moveDY > 0 && posY >= maxY) moveDY = -1
 
-        val stepPx = dp(3).toDouble()
-        val want = minOf(stepPx, moveRemaining)
+        val stepLen = minOf(dp(3).toDouble(), moveRemaining)
+        val comp = stepLen / SQRT2      // 每轴分量，保证斜向位移就等于 stepLen
 
-        if (moveDX != 0) {
-            val target = posX + moveDX * want
-            if (target < minX) {
-                moveRemaining -= (posX - minX)
-                posX = minX
-                moveDX = -moveDX
-            } else if (target > maxX) {
-                moveRemaining -= (maxX - posX)
-                posX = maxX
-                moveDX = -moveDX
-            } else {
-                posX = target.toInt()
-                moveRemaining -= want
-            }
-        } else {
-            val target = posY + moveDY * want
-            if (target < minY) {
-                moveRemaining -= (posY - minY)
-                posY = minY
-                moveDY = -moveDY
-            } else if (target > maxY) {
-                moveRemaining -= (maxY - posY)
-                posY = maxY
-                moveDY = -moveDY
-            } else {
-                posY = target.toInt()
-                moveRemaining -= want
-            }
-        }
+        var nx = posX + moveDX * comp
+        if (nx < minX) { nx = minX.toDouble(); moveDX = -moveDX }
+        else if (nx > maxX) { nx = maxX.toDouble(); moveDX = -moveDX }
+        posX = Math.round(nx).toInt()
+
+        var ny = posY + moveDY * comp
+        if (ny < minY) { ny = minY.toDouble(); moveDY = -moveDY }
+        else if (ny > maxY) { ny = maxY.toDouble(); moveDY = -moveDY }
+        posY = Math.round(ny).toInt()
+
+        moveRemaining -= stepLen
 
         applyPosition()
         setWalkVisual(dirName())
