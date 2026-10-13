@@ -222,6 +222,17 @@ class PetBridge(
         main.post { (overlay ?: OverlayPetService.instance)?.setReadConfig(s) }
     }
 
+    /** 设置页「立刻测试一次」 */
+    @JavascriptInterface
+    fun testScreenRead() {
+        main.post { (overlay ?: OverlayPetService.instance)?.triggerScreenRead() }
+    }
+
+    @JavascriptInterface
+    fun testUsageRead() {
+        main.post { (overlay ?: OverlayPetService.instance)?.triggerUsageRead() }
+    }
+
     @JavascriptInterface
     fun hasScreenCapture(): Boolean = ScreenConsent.granted
 

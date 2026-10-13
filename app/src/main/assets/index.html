@@ -150,7 +150,10 @@
   <h2>随机读屏</h2>
   <div class="checkbox"><input id="screenRead" type="checkbox"><label for="screenRead" style="margin:0">开启随机读屏（截图让 AI 评论）</label></div>
   <div class="status">截屏授权：<span id="captureStatus">检查中…</span></div>
-  <div class="row"><button id="btnCapture" class="brutal-btn orange">授权截屏</button></div>
+  <div class="row">
+    <button id="btnCapture" class="brutal-btn orange">授权截屏</button>
+    <button id="btnTestScreen" class="brutal-btn blue">立刻测试一次</button>
+  </div>
   <label>间隔（分钟）：最短 / 最长</label>
   <div class="row" style="margin-top:0">
     <input id="screenMinMinutes" type="number" min="1" max="180" step="1" style="flex:1">
@@ -164,7 +167,10 @@
   <h2>随机读使用数据</h2>
   <div class="checkbox"><input id="usageRead" type="checkbox"><label for="usageRead" style="margin:0">开启随机读使用数据</label></div>
   <div class="status">使用情况访问：<span id="usageStatus">检查中…</span></div>
-  <div class="row"><button id="btnUsage" class="brutal-btn orange">去开启权限</button></div>
+  <div class="row">
+    <button id="btnUsage" class="brutal-btn orange">去开启权限</button>
+    <button id="btnTestUsage" class="brutal-btn blue">立刻测试一次</button>
+  </div>
   <label>间隔（分钟）：最短 / 最长</label>
   <div class="row" style="margin-top:0">
     <input id="usageMinMinutes" type="number" min="1" max="180" step="1" style="flex:1">

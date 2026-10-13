@@ -120,6 +120,16 @@ $('#btnCapture').addEventListener('click', function () {
   setTimeout(refreshReadPerms, 3000);
 });
 
+$('#btnTestScreen').addEventListener('click', function () {
+  saveSettings();
+  setTimeout(function () { try { B.testScreenRead(); } catch (e) {} }, 200);
+});
+
+$('#btnTestUsage').addEventListener('click', function () {
+  saveSettings();
+  setTimeout(function () { try { B.testUsageRead(); } catch (e) {} }, 200);
+});
+
 $('#btnUsage').addEventListener('click', function () {
   B.openUsageAccessSettings();
   setTimeout(refreshReadPerms, 3000);

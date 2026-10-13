@@ -427,6 +427,15 @@ class OverlayPetService : Service() {
         walkHandler.postDelayed(usageTick, randDelay(usageMinMs, usageMaxMs))
     }
 
+    /** 设置页「立刻测试一次」用：忽略概率直接跑 */
+    fun triggerScreenRead() {
+        webView.evaluateJavascript("window.__onScreenTick && window.__onScreenTick(true)", null)
+    }
+
+    fun triggerUsageRead() {
+        webView.evaluateJavascript("window.__onUsageTick && window.__onUsageTick(true)", null)
+    }
+
     /** Activity 拿到截屏授权后调用 */
     fun initScreenCapture() {
         if (!ScreenConsent.granted) return

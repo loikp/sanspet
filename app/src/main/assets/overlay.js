@@ -1165,8 +1165,16 @@ window.__sansCallback = function (id, resultJson) {
    都只在待机时触发（原生那边已经判断了 state == IDLE）
    ==================================================================== */
 
+let screenPendingTimer = null;
+
 window.__onScreenshot = function (cbId, ok, b64) {
-  if (!ok || !b64) { busy = false; return; }
+  if (screenPendingTimer) { clearTimeout(screenPendingTimer); screenPendingTimer = null; }
+
+  if (!ok || !b64) {
+    busy = false;
+    try { B.toast('截图失败：可能授权失效了，重新点一次「授权截屏」'); } catch (e) {}
+    return;
+  }
   const hint = '下面是用户手机屏幕的截图。' +
                '挑一个你注意到的细节，用一句话（不超过 25 字）评价他现在在干嘛。' +
                '语气像 Sans，随意、有点损但不刻薄。只输出你要说的话，不要解释、不要旁白。';
@@ -1176,32 +1184,69 @@ window.__onScreenshot = function (cbId, ok, b64) {
     if (r.ok && r.content) {
       addHistory('assistant', r.content);
       speak(r.content);
+    } else {
+      try { B.toast('读屏请求失败：' + (r.error || '未知错误')); } catch (e) {}
     }
   }, b64);
 };
 
-window.__onScreenTick = function () {
-  if (asleep || busy || typing) return;
-  if (S('screenRead', '0') !== '1') return;
-  if (!useAi()) return;
+/* force = true 时忽略概率，并在不满足条件时弹出原因（设置页的「立刻测试」用） */
+window.__onScreenTick = function (force) {
+  if (asleep || busy || typing) {
+    if (force) { try { B.toast('现在没法读屏：它在睡觉或者正忙'); } catch (e) {} }
+    return;
+  }
+  if (S('screenRead', '0') !== '1') {
+    if (force) { try { B.toast('读屏开关没打开'); } catch (e) {} }
+    return;
+  }
+  if (!useAi()) {
+    if (force) { try { B.toast('需要「AI 对话」模式，且 Base URL / Key / 模型都填好'); } catch (e) {} }
+    return;
+  }
 
   busy = true;
   const cbId = 'sc' + (++cbSeq);
+
+  // 保险：10 秒没回音就解开，免得一直卡着
+  screenPendingTimer = setTimeout(function () {
+    screenPendingTimer = null;
+    if (busy) {
+      busy = false;
+      try { B.toast('截图没有返回（超时）'); } catch (e) {}
+    }
+  }, 10000);
+
   try {
     B.requestScreenshot(cbId);
   } catch (e) {
+    clearTimeout(screenPendingTimer);
+    screenPendingTimer = null;
     busy = false;
+    if (force) { try { B.toast('调用截图失败：' + e); } catch (e2) {} }
   }
 };
 
-window.__onUsageTick = function () {
-  if (asleep || busy || typing) return;
-  if (S('usageRead', '0') !== '1') return;
-  if (!useAi()) return;
+window.__onUsageTick = function (force) {
+  if (asleep || busy || typing) {
+    if (force) { try { B.toast('现在没法读使用数据：它在睡觉或者正忙'); } catch (e) {} }
+    return;
+  }
+  if (S('usageRead', '0') !== '1') {
+    if (force) { try { B.toast('使用数据开关没打开'); } catch (e) {} }
+    return;
+  }
+  if (!useAi()) {
+    if (force) { try { B.toast('需要「AI 对话」模式，且 Base URL / Key / 模型都填好'); } catch (e) {} }
+    return;
+  }
 
   let list = [];
   try { list = JSON.parse(B.readUsage(60, 5)) || []; } catch (e) { list = []; }
-  if (!list.length) return;
+  if (!list.length) {
+    if (force) { try { B.toast('读不到使用数据：去系统设置里开启「使用情况访问」'); } catch (e) {} }
+    return;
+  }
 
   const desc = list.map(function (a) {
     return a.name + '（用了 ' + a.minutes + ' 分钟，' + a.lastUsedMinAgo + ' 分钟前打开）';
@@ -1216,10 +1261,11 @@ window.__onUsageTick = function () {
     if (r.ok && r.content) {
       addHistory('assistant', r.content);
       speak(r.content);
+    } else {
+      try { B.toast('读使用数据失败：' + (r.error || '未知错误')); } catch (e) {}
     }
   });
 };
-
 /* ---------------- 主动回复 ---------------- */
 
 /* 戳一戳：没有 Key 一律预设；有 Key 按概率走 LLM */

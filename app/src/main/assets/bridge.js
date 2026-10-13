@@ -67,6 +67,8 @@
     toast: (m) => alert(m),
 
     hasScreenCapture: () => false,
+    testScreenRead: () => alert('浏览器预览模式：读屏只在 APK 里可用'),
+    testUsageRead: () => alert('浏览器预览模式：使用数据只在 APK 里可用'),
     requestScreenCapture: () => alert('浏览器预览模式：APK 里会弹系统截屏授权'),
     hasUsageAccess: () => false,
     openUsageAccessSettings: () => {},
