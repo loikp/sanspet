@@ -271,6 +271,10 @@ class PetBridge(
         main.post { ScreenPermission.activity?.openUsageAccessSettings() }
     }
 
+    /** 手机当前状态快照（电量/网络/亮屏/耳机/前台App…），给 overlay.js 做阈值筛选用 */
+    @JavascriptInterface
+    fun deviceInfo(): String = DeviceInfo.snapshot(context)
+
     /** 读最近几分钟用得最多的几个 App，返回 JSON 数组 */
     @JavascriptInterface
     fun readUsage(minutes: Int, limit: Int): String =

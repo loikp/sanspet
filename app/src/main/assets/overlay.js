@@ -133,6 +133,107 @@ function nowText() {
          p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()) + ' ' + week;
 }
 
+/* ================= 手机状态注入（电量 / 网络 / 耳机 …） =================
+
+   目的：让模型知道一点「此刻的处境」，但绝不能把它变成手机播报员。
+
+   两道闸：
+     ① 阈值：只有真正值得说一句的才进候选
+        （电量 ≤15% 且没充电、刚断网、刚戴耳机、刚静音、深夜还没睡…）
+     ② 冷却：同一条信号被采纳后 3 小时内不再进候选
+        （存在设置里，重启桌宠也记得）
+
+   每轮请求最多塞 1 条，而且提示词里写死了「跟话题没关系就完全不要提」。
+   想加新信号：往 collectEnvSignals() 的数组里加一条就行。
+   ==================================================================== */
+
+const ENV_COOLDOWN_MS = 3 * 60 * 60 * 1000;  // 同一条信号 3 小时内最多出现一次
+const ENV_SNAP_TTL = 30000;                  // 状态快照缓存 30 秒，别每句话都去问一遍系统
+
+let envSnap = null;
+let envSnapAt = 0;
+let envPrev = null;   // 上一次采样，用来判断「刚发生」（插电、戴耳机…）
+
+/** 读手机状态快照 */
+function envRead() {
+  const now = Date.now();
+  if (envSnap && now - envSnapAt < ENV_SNAP_TTL) return envSnap;
+  let d = {};
+  try { d = JSON.parse(B.deviceInfo() || '{}') || {}; } catch (e) { d = {}; }
+  envSnap = d;
+  envSnapAt = now;
+  return d;
+}
+
+function envCooldowns() {
+  try { return JSON.parse(S('envCooldown', '{}')) || {}; } catch (e) { return {}; }
+}
+
+/** 这条信号是不是还在冷却里 */
+function envRecent(key) {
+  const t = envCooldowns()[key];
+  return !!t && Date.now() - t < ENV_COOLDOWN_MS;
+}
+
+/** 记一次「用过了」，顺手清掉过期项免得这个 JSON 越滚越大 */
+function envMarkUsed(key) {
+  const c = envCooldowns();
+  const now = Date.now();
+  c[key] = now;
+  Object.keys(c).forEach(function (k) {
+    if (now - c[k] >= ENV_COOLDOWN_MS) delete c[k];
+  });
+  SS('envCooldown', JSON.stringify(c));
+}
+
+/** 收集「此刻值得说」的信号；prev 为 null 时不判断「刚发生」这类变化 */
+function collectEnvSignals(d, prev) {
+  const out = [];
+  const hour = new Date().getHours();
+  const night = hour >= 23 || hour < 6;
+
+  if (typeof d.battery === 'number' && d.battery <= 15 && d.charging === false) {
+    out.push({ key: 'batteryLow', text: '手机电量只剩 ' + d.battery + '%，而且没插充电器' });
+  }
+  if (prev && prev.charging === false && d.charging === true) {
+    out.push({ key: 'plugged', text: '他刚把手机插上充电器' });
+  }
+  if (d.network === 'offline') {
+    out.push({ key: 'offline', text: '手机现在没连上网' });
+  }
+  if (prev && prev.headset === false && d.headset === true) {
+    out.push({ key: 'headsetOn', text: '他刚戴上耳机' });
+  }
+  if (prev && prev.silent === false && d.silent === true) {
+    out.push({ key: 'silentOn', text: '他把手机调成静音了' });
+  }
+  if (night) {
+    out.push({ key: 'night', text: '现在是深夜/凌晨，他还没睡' });
+  }
+  return out;
+}
+
+/** 挑一条要注入的（本轮没有就返回空串） */
+function envInject() {
+  let d;
+  try { d = envRead(); } catch (e) { return ''; }
+  const prev = envPrev;
+  envPrev = d;                      // 不管这次用不用，采样都要推进
+
+  const fresh = collectEnvSignals(d, prev).filter(function (s) {
+    return !envRecent(s.key);
+  });
+  if (!fresh.length) return '';
+
+  const s = pick(fresh);
+  envMarkUsed(s.key);
+
+  return '【手机状态】' + s.text + '。\n' +
+         '这只是背景，默认不要提 —— 不要报数字，也不要主动汇报手机状态。\n' +
+         '只有当它跟这句话题自然相关时才顺口带一句（比如他说要出门了 → 提一句快没电了）。' +
+         '跟话题没关系就完全不要提。';
+}
+
 /* ================= 状态机：清醒 / 睡眠 =================
    太久没人理 → 有概率睡着
    睡着时 → 隔一会儿有概率说梦话
@@ -1110,7 +1211,8 @@ const APP_LORE = [
   '你现在运行在用户的手机上，是一个常驻桌面的悬浮桌宠。',
   '桌面上那个悬浮的像素骷髅小人就是你本人 —— 不是别的角色，也不是你的"形象代言"。',
   '用户允许的时候，你能看到他的手机屏幕，那就像你从手机里往外看，不要说得像在看别人的东西。',
-  '你被限制在这台手机里，出不去。'
+  '你被限制在这台手机里，出不去。',
+  '深夜（23:00–06:00）的时候说话更轻、更短，别大惊小怪，也别催他去睡觉。'
 ].join('\n');
 
 function buildStableSystemPrompt() {
@@ -1128,11 +1230,16 @@ function buildStableSystemPrompt() {
   return base;
 }
 
-/* 每次都会变的内容，拼到最后一条消息的尾巴上 */
-function buildDynamicTail(hint) {
+/* 每次都会变的内容，拼到最后一条消息的尾巴上。
+   withEnv = false 时不注入手机状态（读屏那次已经有截图了，别再加噪音） */
+function buildDynamicTail(hint, withEnv) {
   const parts = [];
   parts.push('【当前时间】' + nowText() + '（北京时间）');
   if (hint) parts.push('【当前情境】\n' + hint);
+  if (withEnv !== false) {
+    const env = envInject();
+    if (env) parts.push(env);
+  }
   return parts.join('\n\n');
 }
 
@@ -1143,7 +1250,7 @@ function buildPayload(userText, hint, imageB64) {
   recentContext(limit).forEach(function (m) { messages.push(m); });
 
   let tail = userText;
-  const dyn = buildDynamicTail(hint);
+  const dyn = buildDynamicTail(hint, !imageB64);
   if (dyn) tail += '\n\n' + dyn;
 
   // 有图就走视觉模型的多段格式
@@ -1373,6 +1480,15 @@ function pokeOnce() {
   interactSpeak('（用户戳了你一下）', hint, tier.lines);
 }
 
+/* 深夜（23:00–06:00）主动开口的概率降到 1/4。
+   不关掉 —— 熬夜的人也需要有人搭理，只是不能像白天那么吵。 */
+const NIGHT_PROACTIVE_FACTOR = 0.25;
+
+function isNightHour() {
+  const h = new Date().getHours();
+  return h >= 23 || h < 6;
+}
+
 /* 主动回复：没 Key 用预设；有 Key 就让模型顺着之前的话题追问 */
 function proactiveTick() {
   if (S('proactive', '1') !== '1') return;
@@ -1381,7 +1497,8 @@ function proactiveTick() {
   if (historyOpen) return;
   if (Date.now() - lastSpeak < 3 * 60 * 1000) return;
 
-  const rate = parseFloat(S('proactiveRate', '0.08')) || 0;
+  let rate = parseFloat(S('proactiveRate', '0.08')) || 0;
+  if (isNightHour()) rate *= NIGHT_PROACTIVE_FACTOR;
   if (Math.random() >= rate) return;
 
   const lines = presetLines('proactive') || PROACTIVE;
@@ -1487,6 +1604,9 @@ window.addEventListener('load', function () {
   initAudio();
 
   startSleepTalk();
+
+  // 先把基线采下来，否则第一次判断「刚插上充电」会把开机瞬间当成刚发生
+  try { envPrev = envRead(); } catch (e) {}
 
   // 启动时把行走/锁定状态推给原生
   pushWalkConfig();

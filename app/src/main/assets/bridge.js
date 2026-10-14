@@ -77,6 +77,7 @@
     hasUsageAccess: () => false,
     openUsageAccessSettings: () => {},
     readUsage: () => '[]',
+    deviceInfo: () => '{}',
     requestScreenshot: (cbId) => {
       if (window.__onScreenshot) window.__onScreenshot(cbId, false, '');
     },

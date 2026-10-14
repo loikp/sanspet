@@ -26,7 +26,13 @@ class SansAccessibilityService : AccessibilityService() {
         instance = this
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event == null) return
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            val pkg = event.packageName?.toString().orEmpty()
+            if (pkg.isNotEmpty()) lastPackage = pkg
+        }
+    }
 
     override fun onInterrupt() {}
 
@@ -96,6 +102,22 @@ class SansAccessibilityService : AccessibilityService() {
         @Volatile var instance: SansAccessibilityService? = null
 
         @Volatile var lastError: String = ""
+
+        /** 最近一次切到的应用包名（靠无障碍事件拿到，不需要额外权限） */
+        @Volatile var lastPackage: String = ""
+
+        /** 把包名换成应用名给人看；拿不到就返回空 */
+        fun foregroundApp(ctx: android.content.Context): String {
+            val pkg = lastPackage
+            if (pkg.isEmpty()) return ""
+            if (pkg == ctx.packageName) return "SansPet（他自己）"
+            return try {
+                val pm = ctx.packageManager
+                pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+            } catch (_: Exception) {
+                ""
+            }
+        }
 
         /** 服务实例是否已经连上（这一刻能不能马上截图） */
         val ready: Boolean get() = instance != null
