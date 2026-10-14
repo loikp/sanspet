@@ -28,8 +28,36 @@ jobs:
         with:
           gradle-version: "8.9"
 
+      # 配了 KEYSTORE_BASE64 这个 secret 就用正式签名；没配就跳过，退回 debug。
+      - name: Prepare signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KS_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KS_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::没有配 KEYSTORE_BASE64，这次用 debug 签名"
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > sanspet-release.jks
+          {
+            echo "storeFile=sanspet-release.jks"
+            echo "storePassword=$KS_PASSWORD"
+            echo "keyAlias=$KS_ALIAS"
+            echo "keyPassword=$KS_KEY_PASSWORD"
+          } > keystore.properties
+          echo "已写入正式签名配置，alias = $KS_ALIAS"
+
       - name: Build release APK
         run: gradle assembleRelease --no-daemon --stacktrace
+
+      # 把实际用的签名打印出来，一眼能看出有没有换上正式签名
+      - name: Show APK signing
+        run: |
+          BT=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)
+          "$ANDROID_HOME/build-tools/$BT/apksigner" verify --print-certs \
+            app/build/outputs/apk/release/*.apk | head -20 || true
 
       # 把默认的 app-release.apk 改成 SansPet_v1.0.0.apk 这种名字。
       # 版本号直接从 build.gradle.kts 里读，以后改版本不用再动这个文件。

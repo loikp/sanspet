@@ -11,6 +11,12 @@ local.properties
 /app/build
 /keystore/release.keystore
 
+# 正式签名用的密钥和口令 —— 绝对不要提交
+/keystore.properties
+/keystore.base64.txt
+*.jks
+*.keystore
+
 # 根目录的素材原件（正式字体在 app/src/main/assets/fonts/）
 /PUTUI-Regular.ttf
 /sanschinese.ttf
