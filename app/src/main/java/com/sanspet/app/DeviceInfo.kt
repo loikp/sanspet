@@ -25,6 +25,7 @@ import org.json.JSONObject
  *   network     wifi / cellular / other / offline
  *   headset     插着或连着耳机吗
  *   silent      静音或震动吗
+ *   music       有音乐/视频在放吗
  *   foreground  最近切到的应用名（要无障碍开着才有，没开就没有这个字段）
  *
  * 每一块各管各的 try/catch：一项取不到不能连累其他项。
@@ -73,6 +74,8 @@ object DeviceInfo {
             val am = ctx.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             o.put("headset", hasHeadset(am))
             o.put("silent", am.ringerMode != AudioManager.RINGER_MODE_NORMAL)
+            // 音乐/视频流有没有在响（判断「刚放起声音」用）
+            o.put("music", am.isMusicActive)
         } catch (_: Exception) {
         }
 

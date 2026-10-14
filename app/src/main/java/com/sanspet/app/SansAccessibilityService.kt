@@ -1,6 +1,8 @@
 package com.sanspet.app
 
 import android.accessibilityservice.AccessibilityService
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.os.Build
 import android.util.Base64
@@ -106,17 +108,34 @@ class SansAccessibilityService : AccessibilityService() {
         /** 最近一次切到的应用包名（靠无障碍事件拿到，不需要额外权限） */
         @Volatile var lastPackage: String = ""
 
-        /** 把包名换成应用名给人看；拿不到就返回空 */
+        /**
+         * 最近切到的应用名。
+         *
+         * 桌面（Launcher）、系统界面和它自己全部跳过 ——
+         * 用户戳桌宠的时候，前台永远是「桌面」，报这个毫无意义。
+         * 拿不到就返回空字符串。
+         */
         fun foregroundApp(ctx: android.content.Context): String {
             val pkg = lastPackage
             if (pkg.isEmpty()) return ""
-            if (pkg == ctx.packageName) return "SansPet（他自己）"
+            if (pkg == ctx.packageName) return ""
+            if (pkg == "android" || pkg == "com.android.systemui") return ""
+            if (pkg == launcherPackage(ctx)) return ""
             return try {
                 val pm = ctx.packageManager
                 pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
             } catch (_: Exception) {
                 ""
             }
+        }
+
+        /** 当前桌面的包名（各家 ROM 不一样，得问 PackageManager） */
+        private fun launcherPackage(ctx: android.content.Context): String = try {
+            val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+            ctx.packageManager.resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY)
+                ?.activityInfo?.packageName ?: ""
+        } catch (_: Exception) {
+            ""
         }
 
         /** 服务实例是否已经连上（这一刻能不能马上截图） */

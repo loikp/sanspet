@@ -313,8 +313,7 @@ class PetBridge(
             val temperature = req.optDouble("temperature", 0.8)
 
             if (baseUrl.isEmpty() || model.isEmpty()) {
-                return JSONObject().put("ok", false)
-                    .put("error", "请先在设置里填写 API 地址和模型").toString()
+                return fail("config", "请先在设置里填写 API 地址和模型")
             }
 
             val body = JSONObject().apply {
@@ -342,8 +341,15 @@ class PetBridge(
                 ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: ""
 
             if (code !in 200..299) {
-                return JSONObject().put("ok", false)
-                    .put("error", "HTTP $code: ${text.take(300)}").toString()
+                // kind 是给 JS 挑台词的，error 原文留着排查用
+                val kind = when (code) {
+                    401, 403 -> "auth"
+                    404 -> "notfound"
+                    429 -> "rate"
+                    in 500..599 -> "server"
+                    else -> "http"
+                }
+                return fail(kind, "HTTP $code: ${text.take(300)}")
             }
 
             val msg = JSONObject(text)
@@ -358,20 +364,31 @@ class PetBridge(
             }
 
             if (content.isEmpty()) {
-                // 把原始响应带出来，方便判断是"模型不支持图片"还是别的
-                JSONObject().put("ok", false)
-                    .put("error", "模型返回为空。原始响应：" + text.take(400))
-                    .toString()
+                // kind=empty：JS 那边会换成 Sans 自己的一句抱怨
+                fail("empty", "模型返回为空。原始响应：" + text.take(400))
             } else {
                 JSONObject().put("ok", true).put("content", content).toString()
             }
+        } catch (e: java.net.SocketTimeoutException) {
+            // 超时单独拎出来：最常见，原文也最难看
+            fail("timeout", "请求超时（" + (e.message ?: "") + "）")
+        } catch (e: java.net.ConnectException) {
+            fail("net", "连接被拒：" + (e.message ?: ""))
+        } catch (e: java.net.UnknownHostException) {
+            fail("net", "域名解析不了：" + (e.message ?: ""))
+        } catch (e: java.net.SocketException) {
+            fail("net", "连接断了：" + (e.message ?: ""))
         } catch (e: Exception) {
             Log.w("SansPet", "chat failed", e)
-            JSONObject().put("ok", false).put("error", e.message ?: "请求失败").toString()
+            fail("other", e.message ?: "请求失败")
         } finally {
             conn?.disconnect()
         }
     }
+
+    /** 统一的失败结果：kind 给 JS 挑台词，error 留给排查 */
+    private fun fail(kind: String, message: String): String =
+        JSONObject().put("ok", false).put("kind", kind).put("error", message).toString()
 
     // ---------- 获取模型列表 ----------
 

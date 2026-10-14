@@ -83,6 +83,70 @@ function looksLikeMeta(text, maxLen) {
   return false;
 }
 
+/* ================= 报错转成 Sans 的口气 =================
+
+   模型超时 / 返回为空 / Key 不对 / 连不上网 ——
+   原生把这些错误分类放在 kind 字段里（见 PetBridge.fail()），
+   这里把它们换成 Sans 自己会说的话。
+   括号里保留一句人话原因，方便你排查；完整原文打在控制台。
+
+   想改台词：动下面的 ERR_LINES / ERR_TAGS 就行。
+   想加分类：Kotlin 那边 fail("新kind", ...)，这里加一条即可。
+   ====================================================== */
+
+const ERR_LINES = {
+  timeout: ['……你那边是不是卡了？我等到快睡着了。', '……半天没动静，你把我晾这儿了？', '……信号是不是被谁踩断了。'],
+  empty:   ['……我张了张嘴，什么也没说出来。再来一次？', '……刚才那句话在我脑子里蒸发了。', '……脑子里一片空白，你再问一遍。'],
+  config:  ['……钥匙都还没配好呢，去设置里填一下。', '……我连不上外面，接口还没填。'],
+  auth:    ['……这钥匙开不了门，是不是写错了。', '……门卫把我拦下来了，Key 再核对一下？'],
+  notfound:['……找不到那扇门，地址或者模型名不对吧。', '……这模型名我不认识，你确认一下？'],
+  rate:    ['……喘口气，对面让我慢点问。', '……那头太挤了，等会儿再试。'],
+  server:  ['……对面那台机器抽风了，不赖你。', '……不是你的问题，是它那边先趴下了。'],
+  net:     ['……连不上外面，网是不是断了？', '……外面联系不上，看看网。'],
+  http:    ['……对面回了我一句听不懂的。', '……路走不通，回头再试。'],
+  other:   ['……我卡壳了。', '……出岔子了，再试一次？']
+};
+
+/* 括号里的短说明 —— 只讲人话，不放技术黑话 */
+const ERR_TAGS = {
+  timeout: '等太久没回音',
+  empty: '模型没吐字',
+  config: '接口没填全',
+  auth: 'Key 或权限不对',
+  notfound: '地址或模型名不对',
+  rate: '被限流了',
+  server: '对面服务器报错',
+  net: '连不上网',
+  http: '接口报错',
+  other: '不知道哪出了问题'
+};
+
+/* 老版本原生没给 kind 时，从错误文本里猜一个 */
+function guessErrorKind(msg) {
+  const t = String(msg || '').toLowerCase();
+  if (!t) return 'other';
+  if (t.indexOf('timeout') >= 0 || t.indexOf('timed out') >= 0) return 'timeout';
+  if (t.indexOf('返回为空') >= 0) return 'empty';
+  if (t.indexOf('设置里填写') >= 0 || t.indexOf('请先填写') >= 0) return 'config';
+  if (t.indexOf('http 401') >= 0 || t.indexOf('http 403') >= 0) return 'auth';
+  if (t.indexOf('http 404') >= 0) return 'notfound';
+  if (t.indexOf('http 429') >= 0) return 'rate';
+  if (t.indexOf('http 5') >= 0) return 'server';
+  if (t.indexOf('http ') >= 0) return 'http';
+  if (t.indexOf('resolve') >= 0 || t.indexOf('connect') >= 0 ||
+      t.indexOf('network') >= 0 || t.indexOf('socket') >= 0) return 'net';
+  return 'other';
+}
+
+/** 把一次失败变成 Sans 的一句话（带一句人话原因） */
+function errorLine(r) {
+  const kind = (r && r.kind) || guessErrorKind(r && r.error);
+  const lines = ERR_LINES[kind] || ERR_LINES.other;
+  const tag = ERR_TAGS[kind] || ERR_TAGS.other;
+  try { console.log('[SansPet] 请求失败 kind=' + kind + ' :: ' + ((r && r.error) || '')); } catch (e) {}
+  return pick(lines) + '（' + tag + '）';
+}
+
 /* 互动统一入口：按概率决定让 AI 现场生成，还是直接说预设 */
 function interactSpeak(userText, hint, presetLines) {
   if (wantsAi()) {
@@ -147,7 +211,8 @@ function nowText() {
    想加新信号：往 collectEnvSignals() 的数组里加一条就行。
    ==================================================================== */
 
-const ENV_COOLDOWN_MS = 3 * 60 * 60 * 1000;  // 同一条信号 3 小时内最多出现一次
+const ENV_COOLDOWN_MS = 3 * 60 * 60 * 1000;   // 同一条信号 3 小时内最多出现一次
+const ENV_GLOBAL_GAP_MS = 30 * 60 * 1000;     // 不管哪一条，两次注入之间至少隔 30 分钟
 const ENV_SNAP_TTL = 30000;                  // 状态快照缓存 30 秒，别每句话都去问一遍系统
 
 let envSnap = null;
@@ -207,6 +272,18 @@ function collectEnvSignals(d, prev) {
   if (prev && prev.silent === false && d.silent === true) {
     out.push({ key: 'silentOn', text: '他把手机调成静音了' });
   }
+  if (prev && prev.music === false && d.music === true) {
+    out.push({ key: 'musicOn', text: '他刚放起了音乐或者视频' });
+  }
+  if (lastFgSeen && Date.now() - lastFgAt < FG_FRESH_MS) {
+    out.push({ key: 'foreground', text: '他刚才在用「' + lastFgSeen + '」' });
+  }
+  if (screenStreakMin() >= SCREEN_STREAK_MIN) {
+    out.push({
+      key: 'longScreen',
+      text: '他已经连着用手机 ' + Math.floor(screenStreakMin() / 60) + ' 个多小时了，一直没放下'
+    });
+  }
   if (night) {
     out.push({ key: 'night', text: '现在是深夜/凌晨，他还没睡' });
   }
@@ -220,6 +297,10 @@ function envInject() {
   const prev = envPrev;
   envPrev = d;                      // 不管这次用不用，采样都要推进
 
+  // 全局闸：刚塞过一次就先歇着，免得聊天一热闹它每条都要感慨一遍
+  const cools = envCooldowns();
+  if (cools.__last && Date.now() - cools.__last < ENV_GLOBAL_GAP_MS) return '';
+
   const fresh = collectEnvSignals(d, prev).filter(function (s) {
     return !envRecent(s.key);
   });
@@ -227,11 +308,52 @@ function envInject() {
 
   const s = pick(fresh);
   envMarkUsed(s.key);
+  envMarkUsed('__last');
+  // 这两条是「事件」而不是「状态」：用掉就清掉，
+  // 必须等下一次真正的新观测才可能再出现
+  if (s.key === 'foreground') { lastFgSeen = ''; lastFgAt = 0; }
+  if (s.key === 'longScreen') screenOnSince = Date.now();
 
   return '【手机状态】' + s.text + '。\n' +
          '这只是背景，默认不要提 —— 不要报数字，也不要主动汇报手机状态。\n' +
          '只有当它跟这句话题自然相关时才顺口带一句（比如他说要出门了 → 提一句快没电了）。' +
          '跟话题没关系就完全不要提。';
+}
+
+/* ================= 每 60 秒偷看一眼 =================
+
+   有两个信号不能等到「用户来戳我」那一刻才采：
+   戳桌宠的时候人正站在桌面上，前台永远是桌面；
+   连续亮屏时长更是只有定时采样才记得住。
+   所以每 60 秒静默采一次，记在旁边。
+   ==================================================== */
+
+const SAMPLE_MS = 60000;
+const SCREEN_STREAK_MIN = 120;   // 连续亮屏多久算「一直没放下手机」（分钟）
+const FG_FRESH_MS = 30 * 60 * 1000;  // 前台 App 超过 30 分钟就算过时，不再提
+
+let screenOnSince = 0;   // 0 = 屏幕是关的
+let lastFgSeen = '';     // 最近一次看到的前台 App（桌面和它自己已在原生过滤掉）
+let lastFgAt = 0;        // 上面那个是什么时候看到的
+
+function screenStreakMin() {
+  if (!screenOnSince) return 0;
+  return (Date.now() - screenOnSince) / 60000;
+}
+
+function sampleDevice() {
+  let d;
+  try { d = envRead(); } catch (e) { return; }
+  if (d.screenOn === true) {
+    if (!screenOnSince) screenOnSince = Date.now();
+  } else {
+    screenOnSince = 0;
+  }
+  // 只在亮着屏的时候记，否则锁屏前开着的那个 App 会被当成"他刚才在用"
+  if (d.screenOn === true && d.foreground) {
+    lastFgSeen = d.foreground;
+    lastFgAt = Date.now();
+  }
 }
 
 /* ================= 状态机：清醒 / 睡眠 =================
@@ -1310,7 +1432,7 @@ function sendMessage() {
       // 又一次把思考吐出来了，再要一遍
       speak('……你再说一遍，刚才那句我没听清。');
     } else {
-      speak('...出问题了。\n' + (r.error || ''));
+      speak(errorLine(r));
     }
   };
   try {
@@ -1385,7 +1507,7 @@ window.__onScreenshot = function (cbId, ok, b64, reason) {
       // 模型在自言自语，跳过这次
       busy = false;
     } else {
-      try { B.toast('读屏请求失败：' + (r.error || '未知错误')); } catch (e) {}
+      try { B.toast(errorLine(r)); } catch (e) {}
     }
   }, b64);
 };
@@ -1462,7 +1584,7 @@ window.__onUsageTick = function (force) {
       addHistoryOnly('assistant', r.content);
       speak(r.content);
     } else if (!r.ok) {
-      try { B.toast('读使用数据失败：' + (r.error || '未知错误')); } catch (e) {}
+      try { B.toast(errorLine(r)); } catch (e) {}
     }
   });
 };
@@ -1606,7 +1728,8 @@ window.addEventListener('load', function () {
   startSleepTalk();
 
   // 先把基线采下来，否则第一次判断「刚插上充电」会把开机瞬间当成刚发生
-  try { envPrev = envRead(); } catch (e) {}
+  try { envPrev = envRead(); sampleDevice(); } catch (e) {}
+  setInterval(sampleDevice, SAMPLE_MS);
 
   // 启动时把行走/锁定状态推给原生
   pushWalkConfig();
