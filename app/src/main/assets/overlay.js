@@ -167,6 +167,24 @@ function interactSpeak(userText, hint, presetLines) {
   }
 }
 
+/* 关键词怎么算命中。
+
+   默认「话里出现就算」—— 中文和长英文都这样，所以 key "bye" 也能命中 "goodbye"、
+   key "pap" 能命中 "papyrus"。
+
+   但 1~2 个字母的短英文不行：key "hi" 会被 chilling / this / machine 里面的 hi 骗到。
+   这类 key 改成「必须整个词对得上」（hi、say hi 命中；chilling、this 不命中）。
+
+   规则按顺序扫，【先命中的那条赢】—— 想让某条优先，把它挪到数组最前面。 */
+function keyHit(low, key) {
+  const k = String(key || '').toLowerCase();
+  if (!k) return false;
+  if (/^[a-z]{1,2}$/.test(k)) {
+    return new RegExp('(^|[^a-z])' + k + '(?![a-z])').test(low);
+  }
+  return low.indexOf(k) >= 0;
+}
+
 /* 纯预设对话：拿用户的话去匹配关键词，命中用对应语句，没命中随机 */
 function presetReply(text) {
   const P = PRESETS;
@@ -176,7 +194,7 @@ function presetReply(text) {
       const r = P.keywords.rules[i];
       const keys = r.keys || [];
       for (let k = 0; k < keys.length; k++) {
-        if (low.indexOf(String(keys[k]).toLowerCase()) >= 0) {
+        if (keyHit(low, keys[k])) {
           if (r.lines && r.lines.length) return pick(r.lines);
         }
       }
