@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -21,7 +23,7 @@ plugins {
    ⚠️ 口令只用字母和数字，别用 = : 和反斜杠，properties 文件会被它们搞乱。
    ============================================== */
 val ksPropsFile = rootProject.file("keystore.properties")
-val ksProps = java.util.Properties().apply {
+val ksProps = Properties().apply {
     if (ksPropsFile.exists()) ksPropsFile.inputStream().use { load(it) }
 }
 val hasReleaseKey = ksPropsFile.exists() && !ksProps.getProperty("storeFile").isNullOrBlank()
