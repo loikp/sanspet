@@ -13,15 +13,38 @@ const FIELDS = [
   ['contextLimit', '50'],
   ['proactiveRate', '0.08'],
   ['pokeLlmRate', '0.5'],
-  ['screenMinMinutes', '20'],
-  ['screenMaxMinutes', '40'],
-  ['screenChance', '0.5'],
-  ['usageMinMinutes', '15'],
-  ['usageMaxMinutes', '30'],
-  ['usageChance', '0.5'],
+  ['screenMinMinutes', '60'],
+  ['screenMaxMinutes', '180'],
+  ['screenChance', '0.4'],
+  ['usageMinMinutes', '30'],
+  ['usageMaxMinutes', '90'],
+  ['usageChance', '0.4'],
 ];
 
+/* 一次性把「还停在老默认值」的设置搬到新默认值。
+
+   只动「值恰好等于老默认值」的那些项 —— 你自己手改过的数值不会被动。
+   跑完落一个标记，不会重复跑。
+   想再跑一次：把设置页里那个值手动改成别的再改回来，或者清掉 App 数据。 */
+const DEFAULT_MIGRATIONS = [
+  ['screenMinMinutes', '20', '60'],
+  ['screenMaxMinutes', '40', '180'],
+  ['screenChance', '0.5', '0.4'],
+  ['usageMinMinutes', '15', '30'],
+  ['usageMaxMinutes', '30', '90'],
+  ['usageChance', '0.5', '0.4']
+];
+
+function migrateDefaults() {
+  if (B.getSetting('migReadDefaults', '0') === '1') return;
+  DEFAULT_MIGRATIONS.forEach(function (m) {
+    if (B.getSetting(m[0], '') === m[1]) B.setSetting(m[0], m[2]);
+  });
+  B.setSetting('migReadDefaults', '1');
+}
+
 function loadSettings() {
+  migrateDefaults();
   FIELDS.forEach(function (f) {
     const el = $('#' + f[0]);
     if (el) el.value = B.getSetting(f[0], f[1]);
@@ -96,55 +119,6 @@ function refreshPermission() {
   el.textContent = ok ? '已开启' : '未开启';
   el.className = ok ? 'ok' : 'bad';
 }
-
-/* 视觉能力自检：画一张纯红小图发过去，看原始返回 */
-window.__sansCallback = function (id, json) {
-  const out = $('#visionResult');
-  if (out) {
-    let pretty = json;
-    try { pretty = JSON.stringify(JSON.parse(json), null, 2); } catch (e) {}
-    out.value = pretty;
-  }
-};
-
-$('#btnTestVision').addEventListener('click', function () {
-  saveSettings();
-  const out = $('#visionResult');
-  if (out) out.value = '测试中…';
-
-  // 现画一张 64x64 纯红图，转成 dataURL
-  let dataUrl = '';
-  try {
-    const c = document.createElement('canvas');
-    c.width = 64; c.height = 64;
-    const g = c.getContext('2d');
-    g.fillStyle = '#ff0000';
-    g.fillRect(0, 0, 64, 64);
-    dataUrl = c.toDataURL('image/png');
-  } catch (e) {
-    if (out) out.value = '画测试图失败：' + e;
-    return;
-  }
-
-  const payload = {
-    baseUrl: ($('#baseUrl').value || '').trim(),
-    apiKey: ($('#apiKey').value || '').trim(),
-    model: ($('#model').value || '').trim(),
-    messages: [{
-      role: 'user',
-      content: [
-        { type: 'text', text: '这张图是什么颜色？只回答颜色。' },
-        { type: 'image_url', image_url: { url: dataUrl } }
-      ]
-    }]
-  };
-
-  try {
-    B.chat(JSON.stringify(payload), 'vision-test');
-  } catch (e) {
-    if (out) out.value = '调用失败：' + e;
-  }
-});
 
 /* 读屏 / 使用数据的权限状态 */
 function refreshReadPerms() {

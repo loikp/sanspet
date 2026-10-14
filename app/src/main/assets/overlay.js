@@ -1036,13 +1036,13 @@ function pushReadConfig() {
   try {
     B.setReadConfig(JSON.stringify({
       screenEnabled: S('screenRead', '0') === '1',
-      screenMin: parseFloat(S('screenMinMinutes', '20')) || 20,
-      screenMax: parseFloat(S('screenMaxMinutes', '40')) || 40,
-      screenChance: parseFloat(S('screenChance', '0.5')),
+      screenMin: parseFloat(S('screenMinMinutes', '60')) || 60,
+      screenMax: parseFloat(S('screenMaxMinutes', '180')) || 180,
+      screenChance: parseFloat(S('screenChance', '0.4')),
       usageEnabled: S('usageRead', '0') === '1',
-      usageMin: parseFloat(S('usageMinMinutes', '15')) || 15,
-      usageMax: parseFloat(S('usageMaxMinutes', '30')) || 30,
-      usageChance: parseFloat(S('usageChance', '0.5'))
+      usageMin: parseFloat(S('usageMinMinutes', '30')) || 30,
+      usageMax: parseFloat(S('usageMaxMinutes', '90')) || 90,
+      usageChance: parseFloat(S('usageChance', '0.4'))
     }));
   } catch (e) {}
 }

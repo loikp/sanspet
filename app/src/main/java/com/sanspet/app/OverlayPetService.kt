@@ -372,14 +372,14 @@ class OverlayPetService : Service() {
 
     // 间隔和概率都可以从设置页调；掷骰子在这里做，网页只管干活
     private var screenEnabled = false
-    private var screenMinMs = 20 * 60 * 1000L
-    private var screenMaxMs = 40 * 60 * 1000L
-    private var screenChance = 0.5
+    private var screenMinMs = 60 * 60 * 1000L
+    private var screenMaxMs = 180 * 60 * 1000L
+    private var screenChance = 0.4
 
     private var usageEnabled = false
-    private var usageMinMs = 15 * 60 * 1000L
-    private var usageMaxMs = 30 * 60 * 1000L
-    private var usageChance = 0.5
+    private var usageMinMs = 30 * 60 * 1000L
+    private var usageMaxMs = 90 * 60 * 1000L
+    private var usageChance = 0.4
 
     private fun randDelay(minMs: Long, maxMs: Long): Long {
         val lo = minMs.coerceAtLeast(5000L)
@@ -410,14 +410,14 @@ class OverlayPetService : Service() {
         try {
             val o = JSONObject(json)
             screenEnabled = o.optBoolean("screenEnabled", false)
-            screenMinMs = (o.optDouble("screenMin", 20.0) * 60000).toLong()
-            screenMaxMs = (o.optDouble("screenMax", 40.0) * 60000).toLong()
-            screenChance = o.optDouble("screenChance", 0.5).coerceIn(0.0, 1.0)
+            screenMinMs = (o.optDouble("screenMin", 60.0) * 60000).toLong()
+            screenMaxMs = (o.optDouble("screenMax", 180.0) * 60000).toLong()
+            screenChance = o.optDouble("screenChance", 0.4).coerceIn(0.0, 1.0)
 
             usageEnabled = o.optBoolean("usageEnabled", false)
-            usageMinMs = (o.optDouble("usageMin", 15.0) * 60000).toLong()
-            usageMaxMs = (o.optDouble("usageMax", 30.0) * 60000).toLong()
-            usageChance = o.optDouble("usageChance", 0.5).coerceIn(0.0, 1.0)
+            usageMinMs = (o.optDouble("usageMin", 30.0) * 60000).toLong()
+            usageMaxMs = (o.optDouble("usageMax", 90.0) * 60000).toLong()
+            usageChance = o.optDouble("usageChance", 0.4).coerceIn(0.0, 1.0)
         } catch (_: Exception) {
         }
         // 参数变了，重新排期

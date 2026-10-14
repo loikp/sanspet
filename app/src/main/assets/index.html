@@ -76,12 +76,6 @@
   </datalist>
   <select id="modelSelect" class="hidden" size="6" style="margin-top:10px"></select>
   <div class="hint">先填好 Base URL 和 API Key，再点「获取模型列表」，从下面选一个。</div>
-  <div class="row">
-    <button id="btnTestVision" class="brutal-btn blue">测试视觉能力</button>
-  </div>
-  <textarea id="visionResult" readonly style="min-height:110px;color:#aaa;margin-top:10px"></textarea>
-  <div class="hint">发一张纯红色小图问它是什么颜色，验证接口是否真的支持图片。</div>
-
 </section>
 
 <section>
@@ -154,7 +148,7 @@
 <section>
   <h2>随机读屏</h2>
   <div class="checkbox"><input id="screenRead" type="checkbox"><label for="screenRead" style="margin:0">开启随机读屏（截图让 AI 评论）</label></div>
-  <div class="status">无障碍服务：<span id="accStatus">检查中…</span>　<span style="color:#888">（推荐，开一次永久有效）</span></div>
+  <div class="status">无障碍服务：<span id="accStatus">检查中…</span>　<span style="color:#888">（推荐）</span></div>
   <div class="row"><button id="btnAcc" class="brutal-btn orange">去开启无障碍</button></div>
   <div class="status">截屏授权：<span id="captureStatus">检查中…</span>　<span style="color:#888">（备用方式）</span></div>
   <div class="hint" id="captureError" style="color:#ff5c5c;word-break:break-all"></div>
