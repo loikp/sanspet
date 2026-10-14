@@ -1089,8 +1089,32 @@ function recentContext(limit) {
 
 /* 系统提示词 = 内置人设 + 用户追加内容 + 用户名 + 用户人设
    追加内容只做「增加」，不会覆盖内置人设 */
-function buildSystemPrompt() {
-  let base = DEFAULT_PROMPT;
+/* ================= 提示词组装 =================
+
+   关键原则：系统提示词必须是「逐字节不变」的。
+   因为服务端（DeepSeek 等）会对相同前缀做缓存，
+   缓存命中的输入只收 1/10 左右的价格。
+
+   所以：
+     系统提示词 = 内置人设 + 额外设定 + 用户名 + 用户人设   ← 不含时间、不含情境
+     动态内容  = 当前时间 + 当次情境                        ← 塞到最后一条 user 消息里
+
+   之前把「秒级时间」写进系统提示词，导致前缀每秒都在变，
+   缓存永远不命中，等于每次都白付全价。
+   ============================================== */
+
+/* App 层面的固定设定。和用户的人设文件分开写，
+   这样即使用户清空了自己的追加内容，这段也不会丢。 */
+const APP_LORE = [
+  '【运行环境】',
+  '你现在运行在用户的手机上，是一个常驻桌面的悬浮桌宠。',
+  '桌面上那个悬浮的像素骷髅小人就是你本人 —— 不是别的角色，也不是你的"形象代言"。',
+  '用户允许的时候，你能看到他的手机屏幕，那就像你从手机里往外看，不要说得像在看别人的东西。',
+  '你被限制在这台手机里，出不去。'
+].join('\n');
+
+function buildStableSystemPrompt() {
+  let base = DEFAULT_PROMPT + '\n\n' + APP_LORE;
 
   const extra = (S('systemPrompt', '') || '').trim();
   if (extra) base += '\n\n【额外设定】\n' + extra;
@@ -1101,30 +1125,38 @@ function buildSystemPrompt() {
   const persona = (S('userPersona', '') || '').trim();
   if (persona) base += '\n\n关于用户：' + persona;
 
-  // 注入当前时间（设备本地时间，默认北京时间）
-  base += '\n\n【当前时间】\n' + nowText() + '（北京时间）';
-
   return base;
+}
+
+/* 每次都会变的内容，拼到最后一条消息的尾巴上 */
+function buildDynamicTail(hint) {
+  const parts = [];
+  parts.push('【当前时间】' + nowText() + '（北京时间）');
+  if (hint) parts.push('【当前情境】\n' + hint);
+  return parts.join('\n\n');
 }
 
 function buildPayload(userText, hint, imageB64) {
   const limit = parseInt(S('contextLimit', '50'), 10) || 50;
-  let sys = buildSystemPrompt();
-  if (hint) sys += '\n\n【当前情境】\n' + hint;
-  const messages = [{ role: 'system', content: sys }];
+
+  const messages = [{ role: 'system', content: buildStableSystemPrompt() }];
   recentContext(limit).forEach(function (m) { messages.push(m); });
+
+  let tail = userText;
+  const dyn = buildDynamicTail(hint);
+  if (dyn) tail += '\n\n' + dyn;
 
   // 有图就走视觉模型的多段格式
   if (imageB64) {
     messages.push({
       role: 'user',
       content: [
-        { type: 'text', text: userText },
+        { type: 'text', text: tail },
         { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + imageB64 } }
       ]
     });
   } else {
-    messages.push({ role: 'user', content: userText });
+    messages.push({ role: 'user', content: tail });
   }
 
   return {
@@ -1230,8 +1262,10 @@ window.__onScreenshot = function (cbId, ok, b64, reason) {
     try { B.toast('截图失败：' + (reason || '未知原因')); } catch (e) {}
     return;
   }
-  const hint = '下面是用户手机屏幕的截图。' +
-               '挑一个你注意到的细节，用一句话（不超过 25 字）评价他现在在干嘛。' +
+  const hint = '下面是用户手机屏幕的截图（你从手机里往外看到的）。' +
+               '【最重要】如果画面里出现桌面上那个悬浮的像素骷髅小人，那就是你自己本人 —— ' +
+               '用第一人称，绝对不要说"这个桌宠""那个角色""这个小骷髅"，也不要去描述它长什么样。' +
+               '挑一个和用户有关的细节，用一句话（不超过 25 字）评价他现在在干嘛。' +
                '语气像 Sans，随意、有点损但不刻薄。' +
                '【直接输出这句话本身】不要分析、不要复述要求、不要出现"我应该""用户""截图"这类字眼。';
   busy = true;
