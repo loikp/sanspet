@@ -383,10 +383,16 @@ window.__onWake = function () {
   stopFrames();
   const pet = $('#pet');
   if (pet) pet.src = IDLE_SRC;
-  const lines = (PRESETS && PRESETS.states && PRESETS.states.waking &&
+  // 优先用 presets.json 的 triggers.pokeWhileSleeping（以前这份一直是死的），
+  // 没写才回落到 states.waking
+  const lines = presetLines('pokeWhileSleeping') ||
+                (PRESETS && PRESETS.states && PRESETS.states.waking &&
                  PRESETS.states.waking.lines) || ['……嗯？'];
+  const mood = currentMood();
   interactSpeak('（用户把你戳醒了）',
-    '你刚被戳醒，迷迷糊糊的。用一句很短的话回应，不超过 15 个字。只输出你要说的话，不要解释、不要旁白。',
+    withMoodHint(
+      '你刚被戳醒，迷迷糊糊的。用一句很短的话回应，不超过 15 个字。只输出你要说的话，不要解释、不要旁白。',
+      mood),
     lines);
 };
 
@@ -735,7 +741,11 @@ function loadPresets() {
   } catch (e) {}
 }
 
-/* 按 触发 → 状态 → 情绪 的顺序取预设语句，取不到返回 null */
+/* 按名字取一组预设语句：presetLines('pokeWhileSleeping')。
+
+   注意：参数表虽然还留着 (触发, 状态, 情绪)，但那个「优先级链」从来没跑过 ——
+   第一级命中就直接 return 了，后面永远轮不到。情绪不走这里，
+   走上面的 moodLines() / linesWithMood()。 */
 function presetLines(triggerName, stateName, moodName) {
   const P = PRESETS;
   if (!P) return null;
@@ -795,6 +805,74 @@ function tierFor(count) {
     if (count <= POKE_TIERS[i].max) return POKE_TIERS[i];
   }
   return POKE_TIERS[POKE_TIERS.length - 1];
+}
+
+/* ================= 情绪 =================
+
+   情绪不是随机骰出来的 —— 那是你戳出来的结果。
+   规则全部在 currentMood() 里，想改只动那一个函数。
+
+   情绪不是「取话取不到时的备胎」（那样永远轮不到），而是当语调用：
+     · AI 模式：写进 hint，让模型自己带情绪说话
+     · 预设模式：有情绪时，有一定概率改用 presets.json 里 moods 那一池
+
+   对应的台词在 presets.json → moods 里改。
+   ======================================== */
+
+const MOOD_POKE_SHARE = 0.4;   // 有情绪时，戳一戳有多大概率改抽情绪池
+
+/* 情绪 → 给模型看的一句话（AI 模式用） */
+const MOOD_HINT = {
+  happy:   '你现在心情不错。',
+  tired:   '你现在有点困，说话懒洋洋的。',
+  annoyed: '你被戳得有点烦了，但别刻薄，用冷幽默挡一下。'
+};
+
+/** 只读：最近一小时被戳了几次 */
+function recentTapCount() {
+  const now = Date.now();
+  return loadTapTimes().filter(function (t) { return now - t < 3600000; }).length;
+}
+
+/**
+ * 现在是什么情绪，没有就返回 null。
+ * 判定规则（从上往下，先命中先用）：
+ *   一小时内被戳 > 20 次  → annoyed
+ *   23:00 ~ 06:00 还醒着  → tired
+ *   一小时内被戳 ≤ 2 次   → happy
+ *   其余                  → 没情绪
+ */
+function currentMood() {
+  if (asleep) return null;
+  const count = recentTapCount();
+  if (count > 20) return 'annoyed';
+  if (isNightHour()) return 'tired';
+  if (count <= 2) return 'happy';
+  return null;
+}
+
+/** 取某个情绪那一池台词；没有就返回 null */
+function moodLines(name) {
+  const P = PRESETS;
+  if (!P || !name || !P.moods) return null;
+  const m = P.moods[name];
+  if (m && m.lines && m.lines.length) return m.lines;
+  return null;
+}
+
+/** 有情绪时，有 share 概率改用情绪池，否则用原来的池子 */
+function linesWithMood(baseLines, mood, share) {
+  if (mood && Math.random() < share) {
+    const l = moodLines(mood);
+    if (l) return l;
+  }
+  return baseLines;
+}
+
+/** 把情绪接在提示词尾巴上（AI 模式） */
+function withMoodHint(hint, mood) {
+  if (!mood || !MOOD_HINT[mood]) return hint;
+  return hint + '\n【当前情绪】' + MOOD_HINT[mood];
 }
 
 function hasApiKey() {
@@ -1594,12 +1672,15 @@ window.__onUsageTick = function (force) {
 function pokeOnce() {
   const count = recordTap();
   const tier = tierFor(count);
+  const mood = currentMood();
   // 计数已经算好，直接写进提示词，不用模型猜
   const hint = '【戳一戳计数】最近一小时内，用户一共戳了你 ' + count + ' 次（含这一次）。' +
                '这个数字是准确值，直接用它，不要自己推测。\n' +
                tier.hint +
                '\n\n用一句很短的话回应他，不超过 20 个字。只输出你要说的话，不要解释、不要旁白。';
-  interactSpeak('（用户戳了你一下）', hint, tier.lines);
+  interactSpeak('（用户戳了你一下）',
+    withMoodHint(hint, mood),
+    linesWithMood(tier.lines, mood, MOOD_POKE_SHARE));
 }
 
 /* 深夜（23:00–06:00）主动开口的概率降到 1/4。
@@ -1623,10 +1704,13 @@ function proactiveTick() {
   if (isNightHour()) rate *= NIGHT_PROACTIVE_FACTOR;
   if (Math.random() >= rate) return;
 
-  const lines = presetLines('proactive') || PROACTIVE;
+  const mood = currentMood();
+  const lines = linesWithMood(presetLines('proactive') || PROACTIVE, mood, MOOD_POKE_SHARE);
   interactSpeak('（你决定主动开口）',
-    '现在你决定主动开口。如果之前聊过什么，就顺着那个话题追问一句（比如问后来怎么样了、有没有好转）；' +
-    '如果没什么可追问的，就说一句日常的关心。不超过 25 个字。只输出你要说的话，不要解释、不要旁白。',
+    withMoodHint(
+      '现在你决定主动开口。如果之前聊过什么，就顺着那个话题追问一句（比如问后来怎么样了、有没有好转）；' +
+      '如果没什么可追问的，就说一句日常的关心。不超过 25 个字。只输出你要说的话，不要解释、不要旁白。',
+      mood),
     lines);
 }
 
