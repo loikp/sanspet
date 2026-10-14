@@ -627,11 +627,22 @@ function showExpression() {
   });
 }
 
+/* 待机时随机做个表情（眨眼 / 合眼 / 眼睛瞟别处）。
+
+   两个旋钮，想更活或更安静就调这两个数：
+     间隔 45~150 秒掷一次骰子（平均约 97 秒）
+     每次 45% 概率真的做
+   合起来大约 3~4 分钟露一次表情（以前是 45% × 平均 6~7 分钟，太少了）。
+
+   注意：只有待机、没在走路、对话框没开着的时候才做。 */
+const FACE_CHECK_MIN_MS = 45 * 1000;
+const FACE_CHECK_SPAN_MS = 105 * 1000;
+const FACE_CHANCE = 0.45;
+
 function scheduleExpression() {
-  // 1~3 分钟看一次，30% 概率做个表情
-  const delay = (60 + Math.random() * 120) * 1000;
+  const delay = FACE_CHECK_MIN_MS + Math.random() * FACE_CHECK_SPAN_MS;
   setTimeout(function () {
-    if (Math.random() < 0.3) showExpression();
+    if (Math.random() < FACE_CHANCE) showExpression();
     scheduleExpression();
   }, delay);
 }
